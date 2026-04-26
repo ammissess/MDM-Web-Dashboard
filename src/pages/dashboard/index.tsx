@@ -6,6 +6,7 @@ import { http } from "../../providers/axios";
 import { useAutoRefresh } from "../../hooks/useAutoRefresh";
 import { fmtEpoch, fmtRelativeFromNow, normalizeError, policyStatusColor } from "../../utils/format";
 import { LiveStatusBadge } from "../devices/components/LiveStatusBadge";
+import { FleetHealthSummary } from "./components/FleetHealthSummary";
 import { useT } from "../../i18n";
 
 function shortHash(value?: string | null) {
@@ -78,13 +79,20 @@ export const DashboardPage: React.FC = () => {
       setDevices(deviceItems);
       setProfiles(profilesRes.data ?? []);
       setRecentAudit(auditRes.data?.items ?? []);
-      setRecentDetails(
-        detailResults
-          .filter((result): result is PromiseFulfilledResult<AxiosResponse<DeviceDetailResponse>> => result.status === "fulfilled")
-          .map((result) => result.value.data),
-      );
+      const nextDetails = detailResults
+        .filter((result): result is PromiseFulfilledResult<AxiosResponse<DeviceDetailResponse>> => result.status === "fulfilled")
+        .map((result) => result.value.data);
+      const detailRefreshFailed = detailResults.some((result) => result.status === "rejected");
+
+      if (mode === "initial" || nextDetails.length > 0 || detailTargets.length === 0) {
+        setRecentDetails(nextDetails);
+      }
       setLastUpdatedAt(Date.now());
-      setError(null);
+      setError(
+        detailRefreshFailed
+          ? "Some device detail snapshots could not be refreshed. Existing dashboard data is kept where available."
+          : null,
+      );
     } catch (err) {
       setError(normalizeError(err, "Cannot load dashboard"));
     } finally {
@@ -168,6 +176,8 @@ export const DashboardPage: React.FC = () => {
           description="Previous dashboard data is kept on screen while the next refresh retries."
         />
       ) : null}
+
+      <FleetHealthSummary devices={devices} loading={initialLoading} lastUpdatedAt={lastUpdatedAt} />
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>

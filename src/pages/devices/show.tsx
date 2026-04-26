@@ -41,10 +41,13 @@ import {
   telemetryFreshnessColor,
   tryFormatJsonString,
 } from "../../utils/format";
+import { downloadJson, formatDateForFileName } from "../../utils/export";
 import { LiveStatusBadge } from "./components/LiveStatusBadge";
 import { CommandTimeline } from "./components/CommandTimeline";
 import { QuickActionsCard } from "./components/QuickActionsCard";
 import { DeviceLocationStaticMap } from "./components/DeviceLocationStaticMap";
+import { DeviceManagementReport } from "./components/DeviceManagementReport";
+import { ComplianceTimeline } from "./components/ComplianceTimeline";
 import { useT } from "../../i18n";
 
 function makeUiLog(entry: Omit<UiActionLog, "id" | "atEpochMillis">): UiActionLog {
@@ -90,6 +93,22 @@ const hardeningItems: Array<{ key: keyof ProfileResponse; label: string }> = [
   { key: "disallowSafeBoot", label: "Disallow safe boot" },
   { key: "disallowFactoryReset", label: "Disallow factory reset" },
 ];
+
+function sanitizeFileNamePart(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "device";
+}
+
+function maskToken(value: string) {
+  if (value.length <= 8) return "[masked]";
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function maskCommandLeaseToken(command: CommandView) {
+  return {
+    ...command,
+    leaseToken: command.leaseToken ? maskToken(command.leaseToken) : command.leaseToken,
+  };
+}
 
 export const DeviceShowPage: React.FC = () => {
   const t = useT();
@@ -472,6 +491,31 @@ export const DeviceShowPage: React.FC = () => {
     }
   }
 
+  function exportDeviceReportJson() {
+    if (!device) return;
+
+    const report = {
+      exportedAt: new Date().toISOString(),
+      source: "web-dashboard-client-side",
+      scope: "device-management-report",
+      device,
+      linkedProfile,
+      latestLocation,
+      recentEvents: events,
+      telemetrySummary,
+      usageSummary,
+      commands: commands.map(maskCommandLeaseToken),
+      notes: {
+        desiredState: "Backend-owned",
+        appliedState: "Android-reported",
+        compliance: "Displayed from desired/applied config and policy apply status when available",
+      },
+    };
+
+    const deviceName = sanitizeFileNamePart(device.deviceCode || device.id);
+    downloadJson(`mdm-device-${deviceName}-${formatDateForFileName()}.json`, report);
+  }
+
   if (initialLoading && !device) {
     return (
       <Card>
@@ -622,6 +666,19 @@ export const DeviceShowPage: React.FC = () => {
               </Descriptions.Item>
             </Descriptions>
           </Card>
+
+          <DeviceManagementReport
+            device={device}
+            linkedProfile={linkedProfile}
+            latestLocation={latestLocation}
+            events={events}
+            usageSummary={usageSummary}
+            telemetrySummary={telemetrySummary}
+            onExportJson={exportDeviceReportJson}
+            exportDisabled={!device}
+          />
+
+          <ComplianceTimeline device={device} commands={commands} />
 
           <Card title={t("device.currentProfile")} style={{ marginTop: 16 }} className="linked-profile-card">
             {linkedProfile ? (
@@ -1023,4 +1080,3 @@ export const DeviceShowPage: React.FC = () => {
     </div>
   );
 };
-

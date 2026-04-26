@@ -5,7 +5,46 @@ import type { DeviceResponse, ProfileResponse } from "../../types/api";
 import { http } from "../../providers/axios";
 import { useAutoRefresh } from "../../hooks/useAutoRefresh";
 import { fmtEpoch, fmtRelativeFromNow, normalizeError } from "../../utils/format";
+import { downloadCsv, formatDateForFileName } from "../../utils/export";
 import { LiveStatusBadge } from "./components/LiveStatusBadge";
+
+const deviceCsvColumns = [
+  { key: "id", title: "id" },
+  { key: "deviceCode", title: "deviceCode" },
+  { key: "status", title: "status" },
+  { key: "linkedUserCode", title: "linkedUserCode" },
+  { key: "lastSeen", title: "lastSeen" },
+  { key: "lastSeenEpochMillis", title: "lastSeenEpochMillis" },
+  { key: "batteryLevel", title: "batteryLevel" },
+  { key: "isCharging", title: "isCharging" },
+  { key: "wifiEnabled", title: "wifiEnabled" },
+  { key: "androidVersion", title: "androidVersion" },
+  { key: "sdkInt", title: "sdkInt" },
+  { key: "manufacturer", title: "manufacturer" },
+  { key: "model", title: "model" },
+  { key: "imei", title: "imei" },
+  { key: "serial", title: "serial" },
+];
+
+function toDeviceCsvRows(items: DeviceResponse[]): Record<string, unknown>[] {
+  return items.map((item) => ({
+    id: item.id,
+    deviceCode: item.deviceCode,
+    status: item.status,
+    linkedUserCode: item.userCode,
+    lastSeen: fmtEpoch(item.lastSeenAtEpochMillis),
+    lastSeenEpochMillis: item.lastSeenAtEpochMillis,
+    batteryLevel: item.batteryLevel,
+    isCharging: item.isCharging,
+    wifiEnabled: item.wifiEnabled,
+    androidVersion: item.androidVersion,
+    sdkInt: item.sdkInt,
+    manufacturer: item.manufacturer,
+    model: item.model,
+    imei: item.imei,
+    serial: item.serial,
+  }));
+}
 
 export const DeviceListPage: React.FC = () => {
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
@@ -141,6 +180,14 @@ export const DeviceListPage: React.FC = () => {
     label: `${profile.userCode} — ${profile.name}`,
   }));
 
+  function exportDevicesCsv() {
+    downloadCsv(
+      `mdm-devices-${formatDateForFileName()}.csv`,
+      toDeviceCsvRows(filtered),
+      deviceCsvColumns,
+    );
+  }
+
   return (
     <div className="page-stack">
       <div>
@@ -157,24 +204,30 @@ export const DeviceListPage: React.FC = () => {
 
       <Card>
         <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
-          <Input
-            placeholder="Search deviceCode, userCode, model..."
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: 320 }}
-          />
+          <Space wrap>
+            <Input
+              placeholder="Search deviceCode, userCode, model..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              style={{ width: 320 }}
+            />
 
-          <Select
-            allowClear
-            placeholder="Filter status"
-            style={{ width: 180 }}
-            value={statusFilter}
-            onChange={(value) => setStatusFilter(value)}
-            options={[
-              { value: "ACTIVE", label: "ACTIVE" },
-              { value: "LOCKED", label: "LOCKED" },
-            ]}
-          />
+            <Select
+              allowClear
+              placeholder="Filter status"
+              style={{ width: 180 }}
+              value={statusFilter}
+              onChange={(value) => setStatusFilter(value)}
+              options={[
+                { value: "ACTIVE", label: "ACTIVE" },
+                { value: "LOCKED", label: "LOCKED" },
+              ]}
+            />
+          </Space>
+
+          <Button onClick={exportDevicesCsv} loading={loading} disabled={loading || filtered.length === 0}>
+            Export Devices CSV
+          </Button>
         </Space>
       </Card>
 
