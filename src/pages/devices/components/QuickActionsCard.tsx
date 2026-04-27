@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Card, Form, Input, InputNumber, Select, Space, Typography } from "antd";
+import { Alert, Button, Card, Collapse, Form, Input, InputNumber, Select, Space, Tooltip, Typography, message } from "antd";
 import type { CreateCommandRequest, ProfileResponse } from "../../../types/api";
 import { useT } from "../../../i18n";
 
@@ -14,6 +14,9 @@ type Props = {
   onResetUnlockPass: (newPassword: string) => Promise<void> | void;
   onCreateCommand: (request: CreateCommandRequest) => Promise<void> | void;
   actionBusy?: boolean;
+  actionsBlocked?: boolean;
+  blockedReason?: string;
+  onBlockedAction?: () => void;
 };
 
 const commandOptions = [
@@ -22,15 +25,15 @@ const commandOptions = [
   { value: "sync_config", label: "sync_config" },
 ];
 
-function validateJsonObject(raw: string) {
+function validateJsonObject(raw: string, t: (key: string) => string) {
   try {
     const parsed = JSON.parse(raw || "{}");
     if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
-      return Promise.reject(new Error("Payload must be a JSON object string"));
+      return Promise.reject(new Error(t("quick.payloadRequired")));
     }
     return Promise.resolve();
   } catch {
-    return Promise.reject(new Error("Payload must be valid JSON"));
+    return Promise.reject(new Error(t("quick.payloadInvalid")));
   }
 }
 
@@ -45,20 +48,48 @@ export const QuickActionsCard: React.FC<Props> = ({
   onResetUnlockPass,
   onCreateCommand,
   actionBusy,
+  actionsBlocked,
+  blockedReason,
+  onBlockedAction,
 }) => {
   const t = useT();
+  const [unlockForm] = Form.useForm();
+  const [resetForm] = Form.useForm();
   const options = profiles.map((profile) => ({
     value: profile.userCode,
     label: `${profile.userCode} — ${profile.name}`,
   }));
+  const blockedAriaProps = actionsBlocked
+    ? {
+        "aria-disabled": true,
+      }
+    : {};
+  const secondaryActionClass = actionsBlocked ? "soft-disabled-action" : "device-action-secondary";
+  const dangerActionClass = actionsBlocked ? "soft-disabled-action" : "device-action-danger";
+
+  const runAction = (action: () => Promise<void> | void) => {
+    if (actionsBlocked) {
+      onBlockedAction?.();
+      return;
+    }
+    void action();
+  };
+
+  const submitForm = (form: ReturnType<typeof Form.useForm>[0]) => {
+    if (actionsBlocked) {
+      onBlockedAction?.();
+      return;
+    }
+    void form.submit();
+  };
 
   return (
-    <div className="quick-actions-grid">
-      <Card size="small" className="action-section-card" title={t("quick.profileLink")}>
-        <Space.Compact style={{ width: "100%" }}>
+    <div className="device-action-center">
+      <Card size="small" className="device-action-group" title={t("quick.profileLink")}>
+        <div className="device-profile-action-row">
           <Select
-            style={{ width: "100%" }}
-            placeholder="Select profile userCode"
+            className="device-profile-select"
+            placeholder={t("devices.selectPolicyProfile")}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -66,121 +97,217 @@ export const QuickActionsCard: React.FC<Props> = ({
             options={options}
             onChange={(value) => onSelectedUserCodeChange(value ?? null)}
           />
-          <Button type="primary" onClick={() => void onLink()} loading={actionBusy} disabled={!selectedUserCode}>
-            {t("common.link")}
-          </Button>
-        </Space.Compact>
-
-        <Space style={{ marginTop: 12 }}>
-          <Button onClick={() => void onUnlink()} loading={actionBusy}>
-            {t("common.unlinkProfile")}
-          </Button>
-        </Space>
+          <div className="device-profile-button-group">
+            <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+              <Button className={secondaryActionClass} {...blockedAriaProps} onClick={() => runAction(onUnlink)} loading={actionBusy}>
+                {t("common.unlinkProfile")}
+              </Button>
+            </Tooltip>
+            <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+              <Button
+                type={actionsBlocked ? "default" : "primary"}
+                {...blockedAriaProps}
+                onClick={() => runAction(onLink)}
+                loading={actionBusy}
+                disabled={!actionsBlocked && !selectedUserCode}
+              >
+                {t("devices.assignAction")}
+              </Button>
+            </Tooltip>
+          </div>
+        </div>
       </Card>
 
-      <Card size="small" className="action-section-card" title={t("quick.backendStatus")}>
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="Backend status flow"
-          description={t("quick.backendStatusDesc")}
+      <Card size="small" className="device-action-group" title={t("quick.backendStatus")}>
+        <Collapse
+          size="small"
+          className="device-action-collapsible-note"
+          items={[
+            {
+              key: "backend-status-flow",
+              label: t("quick.backendStatusFlow"),
+              children: <Alert type="warning" showIcon message={t("quick.backendStatusFlow")} description={t("quick.backendStatusDesc")} />,
+            },
+          ]}
         />
 
-        <Form layout="vertical" onFinish={(values) => void onUnlock(String(values.password ?? ""))}>
-          <Space.Compact style={{ width: "100%" }}>
+        <Form
+          form={unlockForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (actionsBlocked) {
+              onBlockedAction?.();
+              return;
+            }
+            void onUnlock(String(values.password ?? ""));
+          }}
+          className="device-state-form"
+        >
             <Form.Item
               name="password"
-              rules={[{ required: true, message: "Enter password" }]}
-              style={{ width: "100%", marginBottom: 0 }}
+              rules={[{ required: true, message: t("quick.enterPassword") }]}
             >
-              <Input.Password placeholder="unlock password" />
+              <Input.Password placeholder={t("devices.unlockPasswordPlaceholder")} />
             </Form.Item>
-            <Button type="primary" htmlType="submit" loading={actionBusy}>
-              {t("quick.unlock")}
-            </Button>
-          </Space.Compact>
         </Form>
 
         <Form
+          form={resetForm}
           layout="vertical"
-          onFinish={(values) => void onResetUnlockPass(String(values.newPassword ?? ""))}
-          style={{ marginTop: 12 }}
+          onFinish={(values) => {
+            if (actionsBlocked) {
+              onBlockedAction?.();
+              return;
+            }
+            if (String(values.newPassword ?? "") !== String(values.confirmNewPassword ?? "")) {
+              message.warning(t("quick.confirmPasswordMismatch"));
+              return;
+            }
+            void onResetUnlockPass(String(values.newPassword ?? ""));
+          }}
+          className="device-state-form"
         >
-          <Space.Compact style={{ width: "100%" }}>
+          <div className="device-state-password-grid">
             <Form.Item
               name="newPassword"
-              rules={[{ required: true, message: "Enter new unlock password" }]}
-              style={{ width: "100%", marginBottom: 0 }}
+              rules={[{ required: true, message: t("quick.enterNewUnlockPassword") }]}
             >
-              <Input.Password placeholder="new unlock password" />
+              <Input.Password placeholder={t("quick.newUnlockPasswordPlaceholder")} />
             </Form.Item>
-            <Button htmlType="submit" loading={actionBusy}>
-              {t("quick.resetUnlock")}
-            </Button>
-          </Space.Compact>
+            <Form.Item
+              name="confirmNewPassword"
+              rules={[{ required: true, message: t("quick.enterConfirmNewUnlockPassword") }]}
+            >
+              <Input.Password placeholder={t("quick.confirmNewUnlockPasswordPlaceholder")} />
+            </Form.Item>
+          </div>
         </Form>
 
+        <div className="device-state-button-row">
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button
+              type={actionsBlocked ? "default" : "primary"}
+              {...blockedAriaProps}
+              loading={actionBusy}
+              onClick={() => submitForm(unlockForm)}
+            >
+              {t("quick.unlock")}
+            </Button>
+          </Tooltip>
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button
+              className={secondaryActionClass}
+              {...blockedAriaProps}
+              loading={actionBusy}
+              onClick={() => submitForm(resetForm)}
+            >
+              {t("quick.resetUnlock")}
+            </Button>
+          </Tooltip>
+        </div>
+
         <Space style={{ marginTop: 12 }}>
-          <Button danger onClick={() => void onLock()} loading={actionBusy}>
-            {t("quick.setLocked")}
-          </Button>
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button danger={!actionsBlocked} className={dangerActionClass} {...blockedAriaProps} onClick={() => runAction(onLock)} loading={actionBusy}>
+              {t("quick.setLocked")}
+            </Button>
+          </Tooltip>
         </Space>
       </Card>
 
-      <Card size="small" className="action-section-card action-section-card-wide" title={t("quick.commandDelivery")}>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="Command lifecycle: admin create → device poll → lease/leaseToken → device ack → final status"
-          description={t("quick.commandDesc")}
+      <Card size="small" className="device-action-group" title={t("quick.commandDelivery")}>
+        <Collapse
+          size="small"
+          className="device-action-collapsible-note device-action-guide"
+          items={[
+            {
+              key: "quick-command-guide",
+              label: t("quick.quickCommandGuide"),
+              children: (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("quick.quickCommandGuide")}
+                  description={
+                    <Space direction="vertical" size={4}>
+                      <Typography.Text>{t("quick.quickCommandLockHelp")}</Typography.Text>
+                      <Typography.Text>{t("quick.quickCommandRefreshHelp")}</Typography.Text>
+                      <Typography.Text>{t("quick.quickCommandSyncHelp")}</Typography.Text>
+                    </Space>
+                  }
+                />
+              ),
+            },
+            {
+              key: "command-lifecycle",
+              label: t("quick.commandLifecycleSummary"),
+              children: <Alert type="warning" showIcon message={t("quick.commandLifecycleSummary")} description={t("quick.commandDesc")} />,
+            },
+          ]}
         />
 
-        <Space wrap style={{ marginBottom: 12 }}>
-          <Button loading={actionBusy} onClick={() => void onCreateCommand({ type: "lock_screen", payload: "{}", ttlSeconds: 600 })}>
-            {t("quick.sendLockScreen")}
-          </Button>
-          <Button loading={actionBusy} onClick={() => void onCreateCommand({ type: "refresh_config", payload: "{}", ttlSeconds: 600 })}>
-            {t("quick.sendRefresh")}
-          </Button>
-          <Button loading={actionBusy} onClick={() => void onCreateCommand({ type: "sync_config", payload: "{}", ttlSeconds: 600 })}>
-            {t("quick.sendSync")}
-          </Button>
-        </Space>
+        <div className="device-action-quick-grid">
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button className={secondaryActionClass} {...blockedAriaProps} loading={actionBusy} onClick={() => runAction(() => onCreateCommand({ type: "lock_screen", payload: "{}", ttlSeconds: 600 }))}>
+              {t("quick.sendLockScreen")}
+            </Button>
+          </Tooltip>
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button className={secondaryActionClass} {...blockedAriaProps} loading={actionBusy} onClick={() => runAction(() => onCreateCommand({ type: "refresh_config", payload: "{}", ttlSeconds: 600 }))}>
+              {t("quick.sendRefresh")}
+            </Button>
+          </Tooltip>
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button className={secondaryActionClass} {...blockedAriaProps} loading={actionBusy} onClick={() => runAction(() => onCreateCommand({ type: "sync_config", payload: "{}", ttlSeconds: 600 }))}>
+              {t("quick.sendSync")}
+            </Button>
+          </Tooltip>
+        </div>
 
-        <Typography.Text type="secondary">Advanced command payload</Typography.Text>
+        <Typography.Text className="device-action-subheading">{t("quick.advancedCommand")}</Typography.Text>
         <Form
           layout="vertical"
           initialValues={{ type: "refresh_config", payload: "{}", ttlSeconds: 600 }}
-          onFinish={(values) =>
+          onFinish={(values) => {
+            if (actionsBlocked) {
+              onBlockedAction?.();
+              return;
+            }
             void onCreateCommand({
               type: String(values.type ?? "refresh_config"),
               payload: String(values.payload ?? "{}"),
               ttlSeconds: Number(values.ttlSeconds ?? 600),
-            })
-          }
+            });
+          }}
           style={{ marginTop: 8 }}
         >
-          <Form.Item name="type" label="Type" rules={[{ required: true }]}>
+          <Form.Item name="type" label={t("quick.commandType")} rules={[{ required: true }]}>
             <Select options={commandOptions} />
           </Form.Item>
 
           <Form.Item
             name="payload"
-            label="Payload string"
-            rules={[{ required: true, message: "Payload must be a JSON object string" }, { validator: (_, value) => validateJsonObject(String(value ?? "{}")) }]}
+            label={t("quick.payloadString")}
+            rules={[{ required: true, message: t("quick.payloadRequired") }, { validator: (_, value) => validateJsonObject(String(value ?? "{}"), t) }]}
           >
             <Input.TextArea rows={4} placeholder='{}' />
           </Form.Item>
 
-          <Form.Item name="ttlSeconds" label="TTL seconds" rules={[{ required: true }]}>
+          <Form.Item name="ttlSeconds" label={t("quick.ttlSeconds")} rules={[{ required: true }]}>
             <InputNumber style={{ width: "100%" }} min={1} max={86_400} />
           </Form.Item>
 
-          <Button type="primary" htmlType="submit" loading={actionBusy}>
-            {t("quick.sendCommand")}
-          </Button>
+          <Tooltip title={actionsBlocked ? blockedReason : undefined}>
+            <Button
+              type={actionsBlocked ? "default" : "primary"}
+              {...blockedAriaProps}
+              htmlType={actionsBlocked ? "button" : "submit"}
+              loading={actionBusy}
+              onClick={actionsBlocked ? onBlockedAction : undefined}
+            >
+              {t("quick.sendCommand")}
+            </Button>
+          </Tooltip>
         </Form>
       </Card>
     </div>

@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from "react";
-import { Alert, Button, Card, Collapse, DatePicker, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, DatePicker, Drawer, Empty, Input, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import dayjs from "dayjs";
 import type { AuditLogItem, AuditLogListResponse } from "../../types/api";
 import { http } from "../../providers/axios";
 import { useAutoRefresh } from "../../hooks/useAutoRefresh";
 import { fmtEpoch, normalizeError, tryFormatJsonString } from "../../utils/format";
 import { downloadCsv, formatDateForFileName } from "../../utils/export";
+import { useT } from "../../i18n";
 
 const auditCsvColumns = [
   { key: "id", title: "id" },
@@ -42,7 +43,23 @@ function actorColor(actorType: string) {
   return "default";
 }
 
+function payloadText(value?: string | null) {
+  if (!value) return "";
+  return tryFormatJsonString(value);
+}
+
+function actorLabel(record: AuditLogItem) {
+  return [record.actorType, record.actorUserId ? `user=${record.actorUserId}` : null, record.actorDeviceCode ? `device=${record.actorDeviceCode}` : null]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function targetLabel(record: AuditLogItem) {
+  return [record.targetType, record.targetId].filter(Boolean).join(" / ");
+}
+
 export const AuditListPage: React.FC = () => {
+  const t = useT();
   const [items, setItems] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +69,7 @@ export const AuditListPage: React.FC = () => {
   const [targetId, setTargetId] = useState("");
   const [fromDate, setFromDate] = useState<dayjs.Dayjs | null>(null);
   const [toDate, setToDate] = useState<dayjs.Dayjs | null>(null);
+  const [payloadRecord, setPayloadRecord] = useState<AuditLogItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -70,11 +88,11 @@ export const AuditListPage: React.FC = () => {
       setItems(data.items ?? []);
       setError(null);
     } catch (err) {
-      setError(normalizeError(err, "Cannot load audit log"));
+      setError(normalizeError(err, t("audit.loadFailed")));
     } finally {
       setLoading(false);
     }
-  }, [actionFilter, actorType, targetType, targetId, fromDate, toDate]);
+  }, [actionFilter, actorType, targetType, targetId, fromDate, toDate, t]);
 
   React.useEffect(() => {
     void load();
@@ -83,7 +101,17 @@ export const AuditListPage: React.FC = () => {
   useAutoRefresh(load, true, 5000, [load]);
 
   function exportAuditCsv() {
-    downloadCsv(`mdm-audit-${formatDateForFileName()}.csv`, toAuditCsvRows(items), auditCsvColumns);
+    downloadCsv(`mdm-activity-logs-${formatDateForFileName()}.csv`, toAuditCsvRows(items), auditCsvColumns);
+  }
+
+  async function copyPayload() {
+    if (!payloadRecord?.payloadJson) return;
+    try {
+      await navigator.clipboard.writeText(payloadText(payloadRecord.payloadJson));
+      message.success(t("audit.payloadCopied"));
+    } catch {
+      message.error(t("audit.payloadCopyFailed"));
+    }
   }
 
   return (
@@ -91,26 +119,26 @@ export const AuditListPage: React.FC = () => {
       <div className="toolbar-row">
         <div>
           <Typography.Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
-            Audit log
+            {t("audit.title")}
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            GET /api/admin/audit supports action, actorType, targetType, targetId, time range, limit and offset.
+            {t("audit.description")}
           </Typography.Paragraph>
         </div>
 
         <Space wrap>
           <Button onClick={exportAuditCsv} loading={loading} disabled={loading || items.length === 0}>
-            Export Audit CSV
+            {t("audit.exportCsv")}
           </Button>
           <Input
-            placeholder="Action, e.g. CREATE_COMMAND"
+            placeholder={t("audit.actionPlaceholder")}
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
             style={{ width: 220 }}
           />
           <Select
             allowClear
-            placeholder="Actor type"
+            placeholder={t("audit.actorType")}
             style={{ width: 160 }}
             value={actorType}
             onChange={(value) => setActorType(value)}
@@ -120,26 +148,26 @@ export const AuditListPage: React.FC = () => {
             ]}
           />
           <Input
-            placeholder="Target type"
+            placeholder={t("audit.targetType")}
             value={targetType}
             onChange={(e) => setTargetType(e.target.value)}
             style={{ width: 160 }}
           />
           <Input
-            placeholder="Target id"
+            placeholder={t("audit.targetId")}
             value={targetId}
             onChange={(e) => setTargetId(e.target.value)}
             style={{ width: 220 }}
           />
           <DatePicker
             showTime
-            placeholder="From"
+            placeholder={t("audit.from")}
             value={fromDate}
             onChange={(value) => setFromDate(value)}
           />
           <DatePicker
             showTime
-            placeholder="To"
+            placeholder={t("audit.to")}
             value={toDate}
             onChange={(value) => setToDate(value)}
           />
@@ -148,17 +176,19 @@ export const AuditListPage: React.FC = () => {
 
       {error ? <Alert type="error" message={error} /> : null}
 
-      <Card>
+      <Card className="audit-table-card">
         <Table<AuditLogItem>
           dataSource={items}
           rowKey="id"
           loading={loading}
+          tableLayout="fixed"
           pagination={{ pageSize: 10 }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No audit rows" /> }}
-          scroll={{ x: 1200 }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("audit.noRows")} /> }}
+          scroll={{ x: 1240 }}
         >
           <Table.Column<AuditLogItem>
-            title="When"
+            title={t("audit.when")}
+            width={210}
             render={(_, record) => (
               <Space direction="vertical" size={0}>
                 <Typography.Text>{fmtEpoch(record.createdAtEpochMillis)}</Typography.Text>
@@ -167,7 +197,8 @@ export const AuditListPage: React.FC = () => {
             )}
           />
           <Table.Column<AuditLogItem>
-            title="Actor"
+            title={t("audit.actor")}
+            width={300}
             render={(_, record) => (
               <Space direction="vertical" size={0}>
                 <Tag color={actorColor(record.actorType)}>{record.actorType}</Tag>
@@ -177,44 +208,92 @@ export const AuditListPage: React.FC = () => {
             )}
           />
           <Table.Column<AuditLogItem>
-            title="Action"
+            title={t("audit.action")}
+            width={210}
+            ellipsis
             render={(_, record) => <Tag color="purple">{record.action}</Tag>}
           />
           <Table.Column<AuditLogItem>
-            title="Target"
+            title={t("audit.target")}
+            width={320}
             render={(_, record) => (
               <Space direction="vertical" size={0}>
-                {record.targetType ? <Tag>{record.targetType}</Tag> : <Typography.Text type="secondary">Not available</Typography.Text>}
-                <Typography.Text type="secondary">{record.targetId ?? "Not available"}</Typography.Text>
+                {record.targetType ? <Tag>{record.targetType}</Tag> : <Typography.Text type="secondary">{t("common.notAvailable")}</Typography.Text>}
+                {record.targetId ? (
+                  <Tooltip title={record.targetId}>
+                    <Typography.Text type="secondary" ellipsis style={{ maxWidth: 280 }}>
+                      {record.targetId}
+                    </Typography.Text>
+                  </Tooltip>
+                ) : (
+                  <Typography.Text type="secondary">{t("common.notAvailable")}</Typography.Text>
+                )}
               </Space>
             )}
           />
           <Table.Column<AuditLogItem>
-            title="Payload"
+            title={t("audit.payload")}
+            width={160}
             render={(_, record) => (
               record.payloadJson ? (
-                <Collapse
-                  ghost
-                  size="small"
-                  items={[
-                    {
-                      key: "payload",
-                      label: "View payload",
-                      children: (
-                        <Typography.Paragraph style={{ marginBottom: 0 }} copyable={{ text: record.payloadJson ?? "" }}>
-                          <pre className="json-box compact">{tryFormatJsonString(record.payloadJson)}</pre>
-                        </Typography.Paragraph>
-                      ),
-                    },
-                  ]}
-                />
+                <Button size="small" onClick={() => setPayloadRecord(record)}>
+                  {t("audit.viewPayload")}
+                </Button>
               ) : (
-                <Typography.Text type="secondary">Not available</Typography.Text>
+                <Typography.Text type="secondary">{t("audit.noPayload")}</Typography.Text>
               )
             )}
           />
         </Table>
       </Card>
+
+      <Drawer
+        title={t("audit.payloadDetails")}
+        open={Boolean(payloadRecord)}
+        onClose={() => setPayloadRecord(null)}
+        width={640}
+        className="audit-payload-drawer"
+        extra={
+          <Space>
+            <Button onClick={copyPayload} disabled={!payloadRecord?.payloadJson}>
+              {t("audit.copyJson")}
+            </Button>
+            <Button onClick={() => setPayloadRecord(null)}>{t("common.close")}</Button>
+          </Space>
+        }
+      >
+        {payloadRecord ? (
+          <div className="page-stack">
+            <Card size="small">
+              <DescriptionsGrid
+                rows={[
+                  [t("audit.when"), fmtEpoch(payloadRecord.createdAtEpochMillis)],
+                  [t("audit.actor"), actorLabel(payloadRecord) || t("common.notAvailable")],
+                  [t("audit.action"), payloadRecord.action],
+                  [t("audit.target"), targetLabel(payloadRecord) || t("common.notAvailable")],
+                  [t("audit.targetId"), payloadRecord.targetId ?? t("common.notAvailable")],
+                ]}
+              />
+            </Card>
+            {payloadRecord.payloadJson ? (
+              <pre className="json-box audit-payload-json">{payloadText(payloadRecord.payloadJson)}</pre>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("audit.noPayload")} />
+            )}
+          </div>
+        ) : null}
+      </Drawer>
     </div>
   );
 };
+
+const DescriptionsGrid: React.FC<{ rows: Array<[string, React.ReactNode]> }> = ({ rows }) => (
+  <div className="audit-payload-meta-grid">
+    {rows.map(([label, value]) => (
+      <React.Fragment key={label}>
+        <Typography.Text type="secondary">{label}</Typography.Text>
+        <Typography.Text>{value}</Typography.Text>
+      </React.Fragment>
+    ))}
+  </div>
+);

@@ -15,6 +15,7 @@ import {
   policyStatusColor,
   telemetryFreshnessColor,
 } from "../../../utils/format";
+import { useT } from "../../../i18n";
 
 type Props = {
   device: DeviceDetailResponse;
@@ -28,21 +29,24 @@ type Props = {
 };
 
 type ComplianceDisplay = {
-  label: "Compliant" | "Pending" | "Failed" | "Unknown";
+  labelKey: string;
   color: string;
-  source: "Backend" | "UI-derived";
-  detail: string;
+  sourceKey: string;
+  detailKey: string;
+  uiDerived: boolean;
 };
 
-const notAvailable = <Typography.Text type="secondary">Not available</Typography.Text>;
+function notAvailable(t: (key: string) => string) {
+  return <Typography.Text type="secondary">{t("common.notAvailable")}</Typography.Text>;
+}
 
-function textOrNA(value?: string | number | boolean | null) {
-  if (value == null || value === "") return notAvailable;
+function textOrNA(value: string | number | boolean | null | undefined, t: (key: string) => string) {
+  if (value == null || value === "") return notAvailable(t);
   return String(value);
 }
 
-function timestamp(value?: number | null) {
-  if (!value) return notAvailable;
+function timestamp(value: number | null | undefined, t: (key: string) => string) {
+  if (!value) return notAvailable(t);
   return (
     <Space direction="vertical" size={0}>
       <Typography.Text>{fmtEpoch(value)}</Typography.Text>
@@ -51,8 +55,8 @@ function timestamp(value?: number | null) {
   );
 }
 
-function hashValue(value?: string | null) {
-  if (!value) return notAvailable;
+function hashValue(value: string | null | undefined, t: (key: string) => string) {
+  if (!value) return notAvailable(t);
   const display = value.length <= 18 ? value : `${value.slice(0, 10)}...${value.slice(-6)}`;
   return (
     <Tooltip title={value}>
@@ -63,9 +67,9 @@ function hashValue(value?: string | null) {
   );
 }
 
-function statusTag(value?: string | null) {
+function statusTag(value: string | null | undefined, t: (key: string) => string) {
   const up = String(value ?? "").toUpperCase();
-  if (!up) return <Tag>Unknown</Tag>;
+  if (!up) return <Tag>{t("common.unknown")}</Tag>;
   return <Tag color={up === "ACTIVE" ? "green" : up === "LOCKED" ? "red" : "default"}>{up}</Tag>;
 }
 
@@ -75,63 +79,70 @@ function deriveCompliance(device: DeviceDetailResponse): ComplianceDisplay {
 
   if (policyStatus === "FAILED" || hasPolicyError) {
     return {
-      label: "Failed",
+      labelKey: "common.failed",
       color: "red",
-      source: device.complianceSummary ? "Backend" : "UI-derived",
-      detail: "Policy apply failure or policy error is present.",
+      sourceKey: device.complianceSummary ? "common.backend" : "common.uiDerived",
+      detailKey: "report.compliance.policyFailure",
+      uiDerived: !device.complianceSummary,
     };
   }
 
   if (device.complianceSummary?.isCompliant === true) {
     return {
-      label: "Compliant",
+      labelKey: "report.compliant",
       color: "green",
-      source: "Backend",
-      detail: "Backend compliance summary reports this device as compliant.",
+      sourceKey: "common.backend",
+      detailKey: "report.compliance.backendCompliant",
+      uiDerived: false,
     };
   }
 
   if (device.complianceSummary?.isCompliant === false) {
     return {
-      label: "Pending",
+      labelKey: "common.pending",
       color: "orange",
-      source: "Backend",
-      detail: "Backend compliance summary reports non-compliant; review desired/applied state.",
+      sourceKey: "common.backend",
+      detailKey: "report.compliance.backendNonCompliant",
+      uiDerived: false,
     };
   }
 
   if (!device.desiredConfigHash && !device.appliedConfigHash) {
     return {
-      label: "Unknown",
+      labelKey: "common.unknown",
       color: "default",
-      source: "UI-derived",
-      detail: "Desired/applied config data is not available.",
+      sourceKey: "common.uiDerived",
+      detailKey: "report.compliance.noDesiredApplied",
+      uiDerived: true,
     };
   }
 
   if (!device.appliedConfigHash || device.desiredConfigHash !== device.appliedConfigHash) {
     return {
-      label: "Pending",
+      labelKey: "common.pending",
       color: "orange",
-      source: "UI-derived",
-      detail: "Desired and applied config are not in sync yet.",
+      sourceKey: "common.uiDerived",
+      detailKey: "report.compliance.outOfSync",
+      uiDerived: true,
     };
   }
 
   if (policyStatus === "SUCCESS") {
     return {
-      label: "Compliant",
+      labelKey: "report.compliant",
       color: "green",
-      source: "UI-derived",
-      detail: "Desired and applied config match and policy apply status is SUCCESS.",
+      sourceKey: "common.uiDerived",
+      detailKey: "report.compliance.uiCompliant",
+      uiDerived: true,
     };
   }
 
   return {
-    label: "Unknown",
+    labelKey: "common.unknown",
     color: "default",
-    source: "UI-derived",
-    detail: "Policy apply status is not enough to classify compliance.",
+    sourceKey: "common.uiDerived",
+    detailKey: "report.compliance.notEnoughData",
+    uiDerived: true,
   };
 }
 
@@ -149,6 +160,7 @@ export const DeviceManagementReport: React.FC<Props> = ({
   onExportJson,
   exportDisabled,
 }) => {
+  const t = useT();
   const compliance = deriveCompliance(device);
   const newestEvent = latestEvent(events);
   const usageItems = usageSummary?.items ?? [];
@@ -156,11 +168,11 @@ export const DeviceManagementReport: React.FC<Props> = ({
 
   return (
     <Card
-      title="Device Management Report"
+      title={t("report.title")}
       style={{ marginTop: 16 }}
       extra={
         <Button onClick={onExportJson} disabled={exportDisabled}>
-          Export Device Report JSON
+          {t("report.exportJson")}
         </Button>
       }
     >
@@ -168,24 +180,24 @@ export const DeviceManagementReport: React.FC<Props> = ({
         <Alert
           type="info"
           showIcon
-          message="Management explanation"
-          description="Desired config is owned by backend. Android fetches config, applies policy, then reports applied state and policy-state. Compliance is displayed from desired/applied config and policy apply status."
+          message={t("report.managementExplanation")}
+          description={t("report.managementDescription")}
         />
 
         <Row gutter={[12, 12]}>
           <Col xs={24} xl={12}>
-            <Card size="small" title="Device Identity">
+            <Card size="small" title={t("report.deviceIdentity")}>
               <Descriptions bordered size="small" column={1}>
-                <Descriptions.Item label="Device ID">
+                <Descriptions.Item label={t("report.deviceId")}>
                   <Typography.Text code copyable={{ text: device.id }}>
                     {device.id}
                   </Typography.Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Device Code">
+                <Descriptions.Item label={t("report.deviceCode")}>
                   <Typography.Text code>{device.deviceCode}</Typography.Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Status">{statusTag(device.status)}</Descriptions.Item>
-                <Descriptions.Item label="Linked profile">
+                <Descriptions.Item label={t("common.status")}>{statusTag(device.status, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.linkedProfile")}>
                   {linkedProfile ? (
                     <Space direction="vertical" size={0}>
                       <Typography.Text>{linkedProfile.name}</Typography.Text>
@@ -196,29 +208,29 @@ export const DeviceManagementReport: React.FC<Props> = ({
                   ) : device.userCode ? (
                     <Tag color="blue">{device.userCode}</Tag>
                   ) : (
-                    notAvailable
+                    notAvailable(t)
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Last seen">{timestamp(device.lastSeenAtEpochMillis)}</Descriptions.Item>
+                <Descriptions.Item label={t("devices.lastSeen")}>{timestamp(device.lastSeenAtEpochMillis, t)}</Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
 
           <Col xs={24} xl={12}>
-            <Card size="small" title="Configuration State">
+            <Card size="small" title={t("report.configurationState")}>
               <Descriptions bordered size="small" column={1}>
-                <Descriptions.Item label="Desired config hash">{hashValue(device.desiredConfigHash)}</Descriptions.Item>
-                <Descriptions.Item label="Desired version">{timestamp(device.desiredConfigVersionEpochMillis)}</Descriptions.Item>
-                <Descriptions.Item label="Applied config hash">{hashValue(device.appliedConfigHash)}</Descriptions.Item>
-                <Descriptions.Item label="Applied version">{timestamp(device.appliedConfigVersionEpochMillis)}</Descriptions.Item>
-                <Descriptions.Item label="Policy apply status">
+                <Descriptions.Item label={t("report.desiredConfigHash")}>{hashValue(device.desiredConfigHash, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.desiredVersion")}>{timestamp(device.desiredConfigVersionEpochMillis, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.appliedConfigHash")}>{hashValue(device.appliedConfigHash, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.appliedVersion")}>{timestamp(device.appliedConfigVersionEpochMillis, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.policyApplyStatus")}>
                   <Tag color={policyStatusColor(device.policyApplyStatus)}>
-                    {String(device.policyApplyStatus || "UNKNOWN").toUpperCase()}
+                    {String(device.policyApplyStatus || t("common.unknown")).toUpperCase()}
                   </Tag>
                 </Descriptions.Item>
-                <Descriptions.Item label="Policy apply error">{textOrNA(device.policyApplyError)}</Descriptions.Item>
-                <Descriptions.Item label="Policy error code">{textOrNA(device.policyApplyErrorCode)}</Descriptions.Item>
-                <Descriptions.Item label="Policy applied at">{timestamp(device.lastPolicyAppliedAtEpochMillis)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.policyApplyError")}>{textOrNA(device.policyApplyError, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.policyErrorCode")}>{textOrNA(device.policyApplyErrorCode, t)}</Descriptions.Item>
+                <Descriptions.Item label={t("report.policyAppliedAt")}>{timestamp(device.lastPolicyAppliedAtEpochMillis, t)}</Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
@@ -226,11 +238,11 @@ export const DeviceManagementReport: React.FC<Props> = ({
 
         <Row gutter={[12, 12]}>
           <Col xs={24} xl={12}>
-            <Card size="small" title="Compliance Summary">
+            <Card size="small" title={t("report.complianceSummary")}>
               <Space direction="vertical" size={8}>
                 <Space wrap>
-                  <Tag color={compliance.color}>{compliance.label}</Tag>
-                  <Tag>{compliance.source}</Tag>
+                  <Tag color={compliance.color}>{t(compliance.labelKey)}</Tag>
+                  <Tag>{t(compliance.sourceKey)}</Tag>
                   {device.healthSummary?.isOnline != null ? (
                     <Tag color={device.healthSummary.isOnline ? "green" : "red"}>
                       online={String(device.healthSummary.isOnline)}
@@ -242,10 +254,10 @@ export const DeviceManagementReport: React.FC<Props> = ({
                     </Tag>
                   ) : null}
                 </Space>
-                <Typography.Text type="secondary">{compliance.detail}</Typography.Text>
-                {compliance.source === "UI-derived" ? (
+                <Typography.Text type="secondary">{t(compliance.detailKey)}</Typography.Text>
+                {compliance.uiDerived ? (
                   <Typography.Text type="secondary">
-                    UI-derived display from desired/applied config and policy apply status. Backend remains source of truth.
+                    {t("report.uiDerivedSourceOfTruth")}
                   </Typography.Text>
                 ) : null}
               </Space>
@@ -253,9 +265,9 @@ export const DeviceManagementReport: React.FC<Props> = ({
           </Col>
 
           <Col xs={24} xl={12}>
-            <Card size="small" title="Latest Runtime Data">
+            <Card size="small" title={t("report.latestRuntimeData")}>
               <Descriptions bordered size="small" column={1}>
-                <Descriptions.Item label="Latest location">
+                <Descriptions.Item label={t("report.latestLocation")}>
                   {latestLocation ? (
                     <Space direction="vertical" size={0}>
                       <Typography.Text>
@@ -266,10 +278,10 @@ export const DeviceManagementReport: React.FC<Props> = ({
                       </Typography.Text>
                     </Space>
                   ) : (
-                    notAvailable
+                    notAvailable(t)
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Telemetry summary">
+                <Descriptions.Item label={t("report.telemetrySummary")}>
                   {telemetrySummary ? (
                     <Space wrap>
                       <Tag>types={telemetrySummary.eventCountByType.length}</Tag>
@@ -278,33 +290,33 @@ export const DeviceManagementReport: React.FC<Props> = ({
                       <Tag>generated={fmtEpoch(telemetrySummary.generatedAtEpochMillis)}</Tag>
                     </Space>
                   ) : (
-                    notAvailable
+                    notAvailable(t)
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Usage summary">
+                <Descriptions.Item label={t("report.usageSummary")}>
                   {usageSummary ? (
                     <Space direction="vertical" size={0}>
-                      <Typography.Text>{usageItems.length} row(s)</Typography.Text>
+                      <Typography.Text>{usageItems.length} {t("report.rows")}</Typography.Text>
                       <Typography.Text type="secondary">
-                        top={topUsage ? `${topUsage.packageName} (${fmtDurationMs(topUsage.totalDurationMs)})` : "Not available"}
+                        top={topUsage ? `${topUsage.packageName} (${fmtDurationMs(topUsage.totalDurationMs)})` : t("common.notAvailable")}
                       </Typography.Text>
                     </Space>
                   ) : (
-                    notAvailable
+                    notAvailable(t)
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Recent events">
+                <Descriptions.Item label={t("report.recentEvents")}>
                   {newestEvent ? (
                     <Space direction="vertical" size={0}>
                       <Space wrap>
-                        <Typography.Text>{events.length} event(s)</Typography.Text>
+                        <Typography.Text>{events.length} {t("report.events")}</Typography.Text>
                         <Tag>{newestEvent.type}</Tag>
                         <Tag>{newestEvent.severity}</Tag>
                       </Space>
                       <Typography.Text type="secondary">{fmtEpoch(newestEvent.createdAtEpochMillis)}</Typography.Text>
                     </Space>
                   ) : (
-                    notAvailable
+                    notAvailable(t)
                   )}
                 </Descriptions.Item>
               </Descriptions>

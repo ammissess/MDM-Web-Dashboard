@@ -2,6 +2,7 @@ import React from "react";
 import { Alert, Card, Space, Tag, Timeline, Typography } from "antd";
 import type { CommandView, DeviceDetailResponse } from "../../../types/api";
 import { commandStatusColor, fmtEpoch, policyStatusColor } from "../../../utils/format";
+import { useT } from "../../../i18n";
 
 type Props = {
   device: DeviceDetailResponse;
@@ -11,11 +12,11 @@ type Props = {
 type StepStatus = "Done" | "Pending" | "Failed" | "Unknown";
 
 type TimelineStep = {
-  title: string;
+  titleKey: string;
   status: StepStatus;
   description: React.ReactNode;
   timestamp?: number | null;
-  timestampLabel?: string;
+  timestampLabelKey?: string;
 };
 
 const syncCommandTypes = new Set(["refresh_config", "sync_config"]);
@@ -46,8 +47,8 @@ function timelineColor(status: StepStatus) {
   }
 }
 
-function shortHash(value?: string | null) {
-  if (!value) return "Not available";
+function shortHash(value: string | null | undefined, t: (key: string) => string) {
+  if (!value) return t("common.notAvailable");
   return value.length <= 18 ? value : `${value.slice(0, 10)}...${value.slice(-6)}`;
 }
 
@@ -68,63 +69,70 @@ function hasPolicyFailure(device: DeviceDetailResponse) {
   );
 }
 
-function buildComplianceStatus(device: DeviceDetailResponse): { status: StepStatus; source: string; detail: string } {
+function buildComplianceStatus(device: DeviceDetailResponse): { status: StepStatus; sourceKey: string; detailKey: string; uiDerived: boolean } {
   if (hasPolicyFailure(device)) {
     return {
       status: "Failed",
-      source: device.complianceSummary ? "Backend" : "UI-derived",
-      detail: "Policy apply failure or policy error is present.",
+      sourceKey: device.complianceSummary ? "common.backend" : "common.uiDerived",
+      detailKey: "report.compliance.policyFailure",
+      uiDerived: !device.complianceSummary,
     };
   }
 
   if (device.complianceSummary?.isCompliant === true) {
     return {
       status: "Done",
-      source: "Backend",
-      detail: "Backend compliance summary reports compliant.",
+      sourceKey: "common.backend",
+      detailKey: "timeline.backendCompliant",
+      uiDerived: false,
     };
   }
 
   if (device.complianceSummary?.isCompliant === false) {
     return {
       status: "Pending",
-      source: "Backend",
-      detail: "Backend compliance summary reports non-compliant.",
+      sourceKey: "common.backend",
+      detailKey: "report.compliance.backendNonCompliant",
+      uiDerived: false,
     };
   }
 
   if (!device.desiredConfigHash && !device.appliedConfigHash) {
     return {
       status: "Unknown",
-      source: "UI-derived",
-      detail: "Desired/applied config data is not available.",
+      sourceKey: "common.uiDerived",
+      detailKey: "report.compliance.noDesiredApplied",
+      uiDerived: true,
     };
   }
 
   if (!device.appliedConfigHash || device.desiredConfigHash !== device.appliedConfigHash) {
     return {
       status: "Pending",
-      source: "UI-derived",
-      detail: "Desired and applied config do not match yet.",
+      sourceKey: "common.uiDerived",
+      detailKey: "timeline.desiredAppliedMismatch",
+      uiDerived: true,
     };
   }
 
   if (String(device.policyApplyStatus ?? "").toUpperCase() === "SUCCESS") {
     return {
       status: "Done",
-      source: "UI-derived",
-      detail: "Desired/applied config match and policy apply status is SUCCESS.",
+      sourceKey: "common.uiDerived",
+      detailKey: "report.compliance.uiCompliant",
+      uiDerived: true,
     };
   }
 
   return {
     status: "Unknown",
-    source: "UI-derived",
-    detail: "Policy apply status is not enough to classify compliance.",
+    sourceKey: "common.uiDerived",
+    detailKey: "report.compliance.notEnoughData",
+    uiDerived: true,
   };
 }
 
-function buildSteps(device: DeviceDetailResponse, commands: CommandView[]): TimelineStep[] {
+function buildSteps(device: DeviceDetailResponse, commands: CommandView[], t: (key: string) => string): TimelineStep[] {
   const syncCommand = latestSyncCommand(commands);
   const syncStatus = commandStatus(syncCommand);
   const policyStatus = String(device.policyApplyStatus ?? "").toUpperCase();
@@ -175,83 +183,83 @@ function buildSteps(device: DeviceDetailResponse, commands: CommandView[]): Time
 
   return [
     {
-      title: "Backend desired config",
+      titleKey: "timeline.backendDesiredConfig",
       status: desiredStatus,
       timestamp: device.desiredConfigVersionEpochMillis,
-      timestampLabel: "Desired version",
+      timestampLabelKey: "timeline.desiredVersion",
       description: (
         <Space direction="vertical" size={2}>
-          <Typography.Text>Source: Backend-owned</Typography.Text>
-          <Typography.Text type="secondary">desiredConfigHash: {shortHash(device.desiredConfigHash)}</Typography.Text>
+          <Typography.Text>{t("timeline.sourceBackendOwned")}</Typography.Text>
+          <Typography.Text type="secondary">desiredConfigHash: {shortHash(device.desiredConfigHash, t)}</Typography.Text>
         </Space>
       ),
     },
     {
-      title: "Refresh/sync trigger",
+      titleKey: "timeline.refreshSyncTrigger",
       status: triggerStatus,
       timestamp: syncCommand?.createdAtEpochMillis,
-      timestampLabel: "Command created",
+      timestampLabelKey: "timeline.commandCreated",
       description: syncCommand ? (
         <Space direction="vertical" size={2}>
           <Space wrap>
             <Tag>{syncCommand.type}</Tag>
             <Tag color={commandStatusColor(syncCommand.status)}>{syncStatus || "UNKNOWN"}</Tag>
           </Space>
-          <Typography.Text type="secondary">Command id: {syncCommand.id}</Typography.Text>
+          <Typography.Text type="secondary">{t("timeline.commandId")}: {syncCommand.id}</Typography.Text>
         </Space>
       ) : (
-        <Typography.Text type="secondary">No refresh_config or sync_config command in current command list.</Typography.Text>
+        <Typography.Text type="secondary">{t("timeline.noSyncCommand")}</Typography.Text>
       ),
     },
     {
-      title: "Device poll / command lease",
+      titleKey: "timeline.devicePollLease",
       status: leaseStatus,
       timestamp: syncCommand?.leasedAtEpochMillis,
-      timestampLabel: "Leased at",
+      timestampLabelKey: "timeline.leasedAt",
       description: syncCommand ? (
         <Typography.Text type="secondary">
           {syncCommand.leasedAtEpochMillis
-            ? `Lease token expires at ${fmtEpoch(syncCommand.leaseExpiresAtEpochMillis)}.`
+            ? `${t("timeline.leaseTokenExpiresAt")} ${fmtEpoch(syncCommand.leaseExpiresAtEpochMillis)}.`
             : syncStatus === "SENT"
-              ? "Command status is SENT. No separate sent timestamp exists in the current web contract."
+              ? t("timeline.sentNoTimestamp")
               : syncStatus === "PENDING"
-                ? "Waiting for device poll/lease."
-                : "No lease timestamp is available in current command data."}
+                ? t("timeline.waitingPollLease")
+                : t("timeline.noLeaseTimestamp")}
         </Typography.Text>
       ) : (
-        <Typography.Text type="secondary">Command data is not available.</Typography.Text>
+        <Typography.Text type="secondary">{t("timeline.commandDataUnavailable")}</Typography.Text>
       ),
     },
     {
-      title: "Device ack final status",
+      titleKey: "timeline.deviceAckFinalStatus",
       status: ackStatus,
       timestamp: syncCommand?.ackedAtEpochMillis ?? syncCommand?.cancelledAtEpochMillis,
-      timestampLabel: syncCommand?.cancelledAtEpochMillis ? "Cancelled at" : "Acked at",
+      timestampLabelKey: syncCommand?.cancelledAtEpochMillis ? "command.cancelledAt" : "command.acked",
       description: syncCommand ? (
         <Space direction="vertical" size={2}>
           <Tag color={commandStatusColor(syncCommand.status)}>{syncStatus || "UNKNOWN"}</Tag>
           {syncCommand.error || syncCommand.errorCode ? (
             <Typography.Text type="secondary">
-              {syncCommand.error ?? "Command error"}
+              {syncCommand.error ?? t("command.errorFallback")}
               {syncCommand.errorCode ? ` [${syncCommand.errorCode}]` : ""}
             </Typography.Text>
           ) : null}
         </Space>
       ) : (
-        <Typography.Text type="secondary">Command final status is not available.</Typography.Text>
+        <Typography.Text type="secondary">{t("timeline.commandFinalUnavailable")}</Typography.Text>
       ),
     },
     {
-      title: "Android apply policy",
+      titleKey: "timeline.androidApplyPolicy",
       status: applyStatus,
       timestamp: device.lastPolicyAppliedAtEpochMillis,
-      timestampLabel: "Policy applied at",
+      timestampLabelKey: "report.policyAppliedAt",
       description: (
         <Space direction="vertical" size={2}>
           <Tag color={policyStatusColor(device.policyApplyStatus)}>{policyStatus || "UNKNOWN"}</Tag>
           {device.policyApplyError || device.policyApplyErrorCode ? (
             <Typography.Text type="secondary">
-              {device.policyApplyError ?? "Policy apply error"}
+              {device.policyApplyError ?? t("timeline.policyApplyError")}
               {device.policyApplyErrorCode ? ` [${device.policyApplyErrorCode}]` : ""}
             </Typography.Text>
           ) : null}
@@ -259,35 +267,36 @@ function buildSteps(device: DeviceDetailResponse, commands: CommandView[]): Time
       ),
     },
     {
-      title: "Android reported applied state",
+      titleKey: "timeline.androidReportedAppliedState",
       status: appliedStateStatus,
       timestamp: device.appliedConfigVersionEpochMillis,
-      timestampLabel: "Applied version",
+      timestampLabelKey: "timeline.appliedVersion",
       description: (
         <Space direction="vertical" size={2}>
-          <Typography.Text>Source: Android-reported</Typography.Text>
-          <Typography.Text type="secondary">appliedConfigHash: {shortHash(device.appliedConfigHash)}</Typography.Text>
-          <Typography.Text type="secondary">policyApplyStatus: {policyStatus || "Unknown"}</Typography.Text>
+          <Typography.Text>{t("timeline.sourceAndroidReported")}</Typography.Text>
+          <Typography.Text type="secondary">{t("timeline.androidReportedAppliedStateDetail")}</Typography.Text>
+          <Typography.Text type="secondary">appliedConfigHash: {shortHash(device.appliedConfigHash, t)}</Typography.Text>
+          <Typography.Text type="secondary">policyApplyStatus: {policyStatus || t("common.unknown")}</Typography.Text>
         </Space>
       ),
     },
     {
-      title: "Dashboard compliance display",
+      titleKey: "timeline.dashboardComplianceDisplay",
       status: compliance.status,
       description: (
         <Space direction="vertical" size={2}>
           <Space wrap>
-            <Tag>{compliance.source}</Tag>
+            <Tag>{t(compliance.sourceKey)}</Tag>
             {device.healthSummary?.isOnline != null ? (
               <Tag color={device.healthSummary.isOnline ? "green" : "red"}>
                 online={String(device.healthSummary.isOnline)}
               </Tag>
             ) : null}
           </Space>
-          <Typography.Text type="secondary">{compliance.detail}</Typography.Text>
-          {compliance.source === "UI-derived" ? (
+          <Typography.Text type="secondary">{t(compliance.detailKey)}</Typography.Text>
+          {compliance.uiDerived ? (
             <Typography.Text type="secondary">
-              UI-derived display from desired/applied config and policy apply status. Backend remains source of truth.
+              {t("report.uiDerivedSourceOfTruth")}
             </Typography.Text>
           ) : null}
         </Space>
@@ -297,15 +306,16 @@ function buildSteps(device: DeviceDetailResponse, commands: CommandView[]): Time
 }
 
 export const ComplianceTimeline: React.FC<Props> = ({ device, commands }) => {
-  const steps = buildSteps(device, commands);
+  const t = useT();
+  const steps = buildSteps(device, commands, t);
 
   return (
-    <Card title="Policy / Compliance Timeline" style={{ marginTop: 16 }}>
+    <Card title={t("timeline.title")} style={{ marginTop: 16 }}>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <Alert
           type="info"
           showIcon
-          message="Timeline is built from current admin read data. Missing timestamps are shown as Unknown rather than inferred."
+          message={t("timeline.reflectsCurrentData")}
         />
 
         <Timeline
@@ -314,12 +324,12 @@ export const ComplianceTimeline: React.FC<Props> = ({ device, commands }) => {
             children: (
               <Space direction="vertical" size={4}>
                 <Space wrap>
-                  <Typography.Text strong>{step.title}</Typography.Text>
-                  <Tag color={statusColor(step.status)}>{step.status}</Tag>
+                  <Typography.Text strong>{t(step.titleKey)}</Typography.Text>
+                  <Tag color={statusColor(step.status)}>{t(`common.${step.status.toLowerCase()}`)}</Tag>
                 </Space>
                 {step.description}
                 <Typography.Text type="secondary">
-                  {step.timestampLabel ?? "Timestamp"}: {step.timestamp ? fmtEpoch(step.timestamp) : "Unknown"}
+                  {step.timestampLabelKey ? t(step.timestampLabelKey) : t("timeline.timestamp")}: {step.timestamp ? fmtEpoch(step.timestamp) : t("common.unknown")}
                 </Typography.Text>
               </Space>
             ),

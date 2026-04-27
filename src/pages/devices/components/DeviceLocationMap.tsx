@@ -36,14 +36,14 @@ function CoordinateBlock({ location }: { location: AdminLatestLocationResponse }
   return (
     <div className="location-coordinate-block">
       <Space wrap>
-        <Tag color="blue">lat {location.latitude}</Tag>
-        <Tag color="blue">lon {location.longitude}</Tag>
-        <Tag>accuracy {location.accuracyMeters} m</Tag>
+        <Tag color="blue">{t("location.latitude")} {location.latitude}</Tag>
+        <Tag color="blue">{t("location.longitude")} {location.longitude}</Tag>
+        <Tag>{t("location.accuracy")} {location.accuracyMeters} m</Tag>
       </Space>
       <Typography.Text type="secondary">
         {t("location.reported")}: {fmtEpoch(location.updatedAtEpochMillis)} · {fmtRelativeFromNow(location.updatedAtEpochMillis)}
       </Typography.Text>
-      <Typography.Text copyable={{ text: coordinateText }}>Coordinates: {coordinateText}</Typography.Text>
+      <Typography.Text copyable={{ text: coordinateText }}>{t("location.coordinates")}: {coordinateText}</Typography.Text>
     </div>
   );
 }
@@ -73,8 +73,8 @@ const DeviceLocationPanel: React.FC<Props> = ({ location }) => {
       <Alert
         type="warning"
         showIcon
-        message="Invalid location payload"
-        description={`Backend returned non-finite coordinates: latitude=${String(latitude)}, longitude=${String(longitude)}.`}
+        message={t("location.invalidPayload")}
+        description={`${t("location.nonFiniteCoordinates")}: latitude=${String(latitude)}, longitude=${String(longitude)}.`}
       />
     );
   }
@@ -110,7 +110,7 @@ const DeviceLocationPanel: React.FC<Props> = ({ location }) => {
       <div className="device-static-map-shell">
         <img
           src={staticUrl}
-          alt={`Device location ${latitude}, ${longitude}`}
+          alt={`${t("location.deviceLocationAlt")} ${latitude}, ${longitude}`}
           className="device-static-map-image"
         />
       </div>
