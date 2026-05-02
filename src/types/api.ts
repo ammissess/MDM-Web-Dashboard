@@ -48,8 +48,8 @@ export interface DeviceResponse {
   model: string;
   imei: string;
   serial: string;
-  batteryLevel: number;
-  isCharging: boolean;
+  batteryLevel?: number | null;
+  isCharging?: boolean | null;
   wifiEnabled: boolean;
   status: DeviceStatus;
   lastSeenAtEpochMillis: number;

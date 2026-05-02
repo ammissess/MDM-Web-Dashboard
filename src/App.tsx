@@ -25,7 +25,7 @@ const DashboardHeader: React.FC = () => {
   return (
     <div className="app-header">
       <div>
-        <Typography.Text strong>MDM Dashboard</Typography.Text>
+        <Typography.Text strong>{t("app.title")}</Typography.Text>
         <Typography.Text type="secondary" className="app-header-subtitle">
           {t("app.subtitle")}
         </Typography.Text>
@@ -53,63 +53,95 @@ const AppLayout: React.FC = () => (
   </ThemedLayoutV2>
 );
 
+const AppContent: React.FC = () => {
+  const { language, setLanguage, t } = useLanguage();
+
+  const resources = React.useMemo(
+    () => [
+      { name: "dashboard", list: "/", meta: { label: t("nav.dashboard") } },
+      { name: "devices", list: "/devices", show: "/devices/show/:id", meta: { label: t("nav.devices") } },
+      {
+        name: "profiles",
+        list: "/profiles",
+        create: "/profiles/create",
+        edit: "/profiles/edit/:id",
+        show: "/profiles/show/:id",
+        meta: { label: t("nav.profiles") },
+      },
+      { name: "audit", list: "/audit", meta: { label: t("nav.audit") } },
+    ],
+    [t],
+  );
+
+  const i18nProvider = React.useMemo(
+    () => ({
+      translate: (key: string, options?: any, defaultMessage?: string) => {
+        const translated = t(key);
+        return translated === key ? defaultMessage ?? (typeof options === "string" ? options : key) : translated;
+      },
+      changeLocale: (next: string) => {
+        if (next === "en" || next === "vi") {
+          setLanguage(next);
+        }
+        return Promise.resolve();
+      },
+      getLocale: () => language,
+    }),
+    [language, setLanguage, t],
+  );
+
+  return (
+    <Refine
+      routerProvider={routerBindings}
+      authProvider={authProvider}
+      dataProvider={dataProvider}
+      i18nProvider={i18nProvider}
+      resources={resources}
+      options={{
+        syncWithLocation: true,
+        warnWhenUnsavedChanges: false,
+        projectId: "mdm-dashboard-redesign",
+        title: { text: t("app.productName") },
+      }}
+    >
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+
+        <Route
+          element={
+            <Authenticated key="protected-routes" fallback={<Navigate to="/login" replace />}>
+              <AppLayout />
+            </Authenticated>
+          }
+        >
+          <Route index element={<DashboardPage />} />
+          <Route path="/devices">
+            <Route index element={<DeviceListPage />} />
+            <Route path="show/:id" element={<DeviceShowPage />} />
+          </Route>
+          <Route path="/profiles">
+            <Route index element={<ProfileListPage />} />
+            <Route path="create" element={<ProfileCreatePage />} />
+            <Route path="edit/:id" element={<ProfileEditPage />} />
+            <Route path="show/:id" element={<ProfileShowPage />} />
+          </Route>
+          <Route path="/audit" element={<AuditListPage />} />
+          <Route path="*" element={<ErrorComponent />} />
+        </Route>
+      </Routes>
+
+      <UnsavedChangesNotifier />
+      <DocumentTitleHandler />
+    </Refine>
+  );
+};
+
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <ConfigProvider theme={RefineThemes.Blue}>
         <LanguageProvider>
-          <Refine
-            routerProvider={routerBindings}
-            authProvider={authProvider}
-            dataProvider={dataProvider}
-            resources={[
-              { name: "dashboard", list: "/", meta: { label: "Dashboard" } },
-              { name: "devices", list: "/devices", show: "/devices/show/:id", meta: { label: "Devices" } },
-              {
-                name: "profiles",
-                list: "/profiles",
-                create: "/profiles/create",
-                edit: "/profiles/edit/:id",
-                show: "/profiles/show/:id",
-                meta: { label: "Profiles" },
-              },
-              { name: "audit", list: "/audit", meta: { label: "Audit" } },
-            ]}
-            options={{
-              syncWithLocation: true,
-              warnWhenUnsavedChanges: false,
-              projectId: "mdm-dashboard-redesign",
-            }}
-          >
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-
-              <Route
-                element={
-                  <Authenticated key="protected-routes" fallback={<Navigate to="/login" replace />}>
-                    <AppLayout />
-                  </Authenticated>
-                }
-              >
-                <Route index element={<DashboardPage />} />
-                <Route path="/devices">
-                  <Route index element={<DeviceListPage />} />
-                  <Route path="show/:id" element={<DeviceShowPage />} />
-                </Route>
-                <Route path="/profiles">
-                  <Route index element={<ProfileListPage />} />
-                  <Route path="create" element={<ProfileCreatePage />} />
-                  <Route path="edit/:id" element={<ProfileEditPage />} />
-                  <Route path="show/:id" element={<ProfileShowPage />} />
-                </Route>
-                <Route path="/audit" element={<AuditListPage />} />
-                <Route path="*" element={<ErrorComponent />} />
-              </Route>
-            </Routes>
-
-            <UnsavedChangesNotifier />
-            <DocumentTitleHandler />
-          </Refine>
+          <AppContent />
         </LanguageProvider>
       </ConfigProvider>
     </BrowserRouter>

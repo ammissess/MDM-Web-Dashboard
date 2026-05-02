@@ -10,6 +10,9 @@ type Props = {
   emptyText?: string;
   onCancelCommand?: (command: CommandView) => Promise<void> | void;
   cancelBusyId?: string | null;
+  actionsBlocked?: boolean;
+  blockedReason?: string;
+  onBlockedAction?: () => void;
 };
 
 function isCancelable(status: string) {
@@ -17,20 +20,20 @@ function isCancelable(status: string) {
   return up === "PENDING" || up === "SENT";
 }
 
-function statusExplanation(status?: string | null) {
+function statusExplanation(status: string | null | undefined, t: (key: string) => string) {
   switch (String(status ?? "").toUpperCase()) {
     case "PENDING":
-      return "Admin created the command; device has not leased it yet.";
+      return t("command.statusPendingHelp");
     case "SENT":
-      return "Device has polled/leased the command.";
+      return t("command.statusSentHelp");
     case "SUCCESS":
-      return "Device acknowledged success.";
+      return t("command.statusSuccessHelp");
     case "FAILED":
-      return "Device acknowledged failure or backend marked failure.";
+      return t("command.statusFailedHelp");
     case "CANCELLED":
-      return "Admin cancelled before final processing.";
+      return t("command.statusCancelledHelp");
     default:
-      return "Status is not recognized by the current web display.";
+      return t("command.statusUnknownHelp");
   }
 }
 
@@ -39,14 +42,14 @@ function maskToken(value: string) {
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
-function timeText(value?: number | null) {
-  return value ? fmtEpoch(value) : "Not available";
+function timeText(value: number | null | undefined, t: (key: string) => string) {
+  return value ? fmtEpoch(value) : t("common.notAvailable");
 }
 
-function statusTag(status?: string | null) {
+function statusTag(status: string | null | undefined, t: (key: string) => string) {
   const up = String(status ?? "").toUpperCase() || "UNKNOWN";
   return (
-    <Tooltip title={statusExplanation(status)}>
+    <Tooltip title={statusExplanation(status, t)}>
       <Tag color={commandStatusColor(status)}>{up}</Tag>
     </Tooltip>
   );
@@ -56,8 +59,8 @@ function completedAt(command: CommandView) {
   return command.ackedAtEpochMillis ?? command.cancelledAtEpochMillis ?? null;
 }
 
-function completedAtLabel(command: CommandView) {
-  return command.cancelledAtEpochMillis ? "Cancelled at" : "Acked/completed at";
+function completedAtLabel(command: CommandView, t: (key: string) => string) {
+  return command.cancelledAtEpochMillis ? t("command.cancelledAt") : t("command.ackedCompletedAt");
 }
 
 function collapseItems(command: CommandView, t: (key: string) => string) {
@@ -85,7 +88,7 @@ function collapseItems(command: CommandView, t: (key: string) => string) {
       label: t("command.error"),
       children: (
         <Typography.Paragraph type="danger" style={{ marginBottom: 0 }}>
-          {command.error ?? "Command error"}
+          {command.error ?? t("command.errorFallback")}
           {command.errorCode ? ` [${command.errorCode}]` : ""}
         </Typography.Paragraph>
       ),
@@ -101,6 +104,9 @@ export const CommandTimeline: React.FC<Props> = ({
   emptyText,
   onCancelCommand,
   cancelBusyId,
+  actionsBlocked,
+  blockedReason,
+  onBlockedAction,
 }) => {
   const t = useT();
   const sortedCommands = useMemo(
@@ -109,7 +115,7 @@ export const CommandTimeline: React.FC<Props> = ({
   );
 
   if (!loading && sortedCommands.length === 0) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No commands yet" />;
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("command.empty")} />;
   }
 
   return (
@@ -118,7 +124,7 @@ export const CommandTimeline: React.FC<Props> = ({
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        message="Command lifecycle: admin creates command, device polls and leases it, device acknowledges final result, backend stores status and audit/read-model side effects."
+        message={t("command.lifecycleDescription")}
       />
       <List
         loading={loading}
@@ -132,46 +138,60 @@ export const CommandTimeline: React.FC<Props> = ({
                 <div className="command-item-top">
                   <Space wrap>
                     <Typography.Text strong>{command.type}</Typography.Text>
-                    {statusTag(command.status)}
+                    {statusTag(command.status, t)}
                     {command.errorCode ? <Tag color="red">{command.errorCode}</Tag> : null}
                   </Space>
 
                   {onCancelCommand && isCancelable(command.status) ? (
-                    <Popconfirm
-                      title="Cancel this command?"
-                      description="Command will move to CANCELLED only if the backend accepts the transition."
-                      onConfirm={() => void onCancelCommand(command)}
-                      okButtonProps={{ loading: cancelBusyId === command.id }}
-                    >
-                      <Button size="small" danger loading={cancelBusyId === command.id}>
-                        {t("common.cancel")}
-                      </Button>
-                    </Popconfirm>
+                    actionsBlocked ? (
+                      <Tooltip title={blockedReason}>
+                        <Button
+                          size="small"
+                          className="soft-disabled-action"
+                          aria-disabled
+                          loading={cancelBusyId === command.id}
+                          onClick={() => onBlockedAction?.()}
+                        >
+                          {t("common.cancel")}
+                        </Button>
+                      </Tooltip>
+                    ) : (
+                      <Popconfirm
+                        title={t("command.cancelConfirmTitle")}
+                        description={t("command.cancelConfirmDescription")}
+                        onConfirm={() => void onCancelCommand(command)}
+                        okButtonProps={{ loading: cancelBusyId === command.id }}
+                      >
+                        <Button size="small" danger loading={cancelBusyId === command.id}>
+                          {t("common.cancel")}
+                        </Button>
+                      </Popconfirm>
+                    )
                   ) : null}
                 </div>
 
                 <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-                  {statusExplanation(command.status)}
+                  {statusExplanation(command.status, t)}
                 </Typography.Paragraph>
 
                 <Descriptions size="small" column={1} bordered>
-                  <Descriptions.Item label={t("command.created")}>{timeText(command.createdAtEpochMillis)}</Descriptions.Item>
-                  <Descriptions.Item label="Sent/leased at">{timeText(command.leasedAtEpochMillis)}</Descriptions.Item>
-                  <Descriptions.Item label={completedAtLabel(command)}>{timeText(completedAt(command))}</Descriptions.Item>
-                  <Descriptions.Item label={t("command.expires")}>{timeText(command.expiresAtEpochMillis)}</Descriptions.Item>
-                  <Descriptions.Item label={t("command.leaseExpires")}>{timeText(command.leaseExpiresAtEpochMillis)}</Descriptions.Item>
+                  <Descriptions.Item label={t("command.created")}>{timeText(command.createdAtEpochMillis, t)}</Descriptions.Item>
+                  <Descriptions.Item label={t("command.sentLeasedAt")}>{timeText(command.leasedAtEpochMillis, t)}</Descriptions.Item>
+                  <Descriptions.Item label={completedAtLabel(command, t)}>{timeText(completedAt(command), t)}</Descriptions.Item>
+                  <Descriptions.Item label={t("command.expires")}>{timeText(command.expiresAtEpochMillis, t)}</Descriptions.Item>
+                  <Descriptions.Item label={t("command.leaseExpires")}>{timeText(command.leaseExpiresAtEpochMillis, t)}</Descriptions.Item>
                   {command.createdByUserId ? (
-                    <Descriptions.Item label="Created by user">{command.createdByUserId}</Descriptions.Item>
+                    <Descriptions.Item label={t("command.createdByUser")}>{command.createdByUserId}</Descriptions.Item>
                   ) : null}
                   {command.leaseToken ? (
                     <Descriptions.Item label="leaseToken">
-                      <Tooltip title="Masked for security; full lease token is not shown.">
+                      <Tooltip title={t("command.leaseTokenMasked")}>
                         <Typography.Text code>{maskToken(command.leaseToken)}</Typography.Text>
                       </Tooltip>
                     </Descriptions.Item>
                   ) : null}
                   {command.cancelReason ? (
-                    <Descriptions.Item label="Cancel reason">
+                    <Descriptions.Item label={t("command.cancelReason")}>
                       <code>{command.cancelReason}</code>
                     </Descriptions.Item>
                   ) : null}

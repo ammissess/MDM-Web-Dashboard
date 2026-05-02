@@ -4,8 +4,10 @@ import { Alert, Button, Card, Input, Popconfirm, Space, Table, Tag, Typography, 
 import type { ProfileResponse } from "../../types/api";
 import { http } from "../../providers/axios";
 import { fmtEpoch, normalizeError } from "../../utils/format";
+import { useT } from "../../i18n";
 
 export const ProfileListPage: React.FC = () => {
+  const t = useT();
   const navigate = useNavigate();
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,11 +20,11 @@ export const ProfileListPage: React.FC = () => {
       setProfiles(data ?? []);
       setError(null);
     } catch (err) {
-      setError(normalizeError(err, "Cannot load profiles"));
+      setError(normalizeError(err, t("profiles.loadFailed")));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -31,10 +33,10 @@ export const ProfileListPage: React.FC = () => {
   async function deleteProfile(id: string) {
     try {
       await http.delete(`/api/admin/profiles/${id}`);
-      message.success("Profile deleted");
+      message.success(t("profiles.deleted"));
       await load();
     } catch (err) {
-      message.error(normalizeError(err, "Delete profile failed"));
+      message.error(normalizeError(err, t("profiles.deleteFailed")));
     }
   }
 
@@ -53,22 +55,22 @@ export const ProfileListPage: React.FC = () => {
       <div className="toolbar-row">
         <div>
           <Typography.Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
-            Profiles
+            {t("profiles.title")}
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Quản lý cấu hình kiosk/policy để gán cho thiết bị.
+            {t("profiles.description")}
           </Typography.Paragraph>
         </div>
 
         <Space>
           <Input
-            placeholder="Search profile"
+            placeholder={t("profiles.searchPlaceholder")}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             style={{ width: 260 }}
           />
           <Button type="primary" onClick={() => navigate("/profiles/create")}>
-            Create profile
+            {t("profiles.create")}
           </Button>
         </Space>
       </div>
@@ -83,7 +85,7 @@ export const ProfileListPage: React.FC = () => {
           pagination={{ pageSize: 10 }}
         >
           <Table.Column<ProfileResponse>
-            title="Profile"
+            title={t("profiles.profileColumn")}
             render={(_, record) => (
               <Space direction="vertical" size={0}>
                 <Typography.Text code>{record.userCode}</Typography.Text>
@@ -117,7 +119,7 @@ export const ProfileListPage: React.FC = () => {
                 <Link to={`/profiles/edit/${record.id}`}>
                   <Button size="small">Edit</Button>
                 </Link>
-                <Popconfirm title="Delete this profile?" onConfirm={() => void deleteProfile(record.id)}>
+                <Popconfirm title={t("profiles.deleteConfirm")} onConfirm={() => void deleteProfile(record.id)}>
                   <Button size="small" danger>
                     Delete
                   </Button>

@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Badge, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography } from "antd";
+import { Alert, Badge, Button, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography } from "antd";
 import type { AxiosResponse } from "axios";
 import type { AuditLogItem, AuditLogListResponse, DeviceDetailResponse, DeviceResponse, ProfileResponse } from "../../types/api";
 import { http } from "../../providers/axios";
 import { useAutoRefresh } from "../../hooks/useAutoRefresh";
-import { fmtEpoch, fmtRelativeFromNow, normalizeError, policyStatusColor } from "../../utils/format";
+import { fmtEpoch, normalizeError, policyStatusColor } from "../../utils/format";
 import { LiveStatusBadge } from "../devices/components/LiveStatusBadge";
 import { FleetHealthSummary } from "./components/FleetHealthSummary";
 import { useT } from "../../i18n";
@@ -44,8 +44,23 @@ function compactDeviceName(device: DeviceResponse | DeviceDetailResponse) {
   return `${device.manufacturer || "-"} ${device.model || ""}`.trim();
 }
 
+function fmtRelativeForDashboard(value: number | null | undefined, t: (key: string) => string) {
+  if (!value || Number.isNaN(value)) return t("common.unknown");
+
+  const diff = Date.now() - value;
+  const abs = Math.abs(diff);
+  const suffix = diff >= 0 ? t("dashboard.ago") : t("dashboard.fromNow");
+
+  if (abs < 1_000) return diff >= 0 ? t("dashboard.justNow") : t("dashboard.inUnderOneSecond");
+  if (abs < 60_000) return `${Math.floor(abs / 1_000)}s ${suffix}`;
+  if (abs < 3_600_000) return `${Math.floor(abs / 60_000)}m ${suffix}`;
+  if (abs < 86_400_000) return `${Math.floor(abs / 3_600_000)}h ${suffix}`;
+  return `${Math.floor(abs / 86_400_000)}d ${suffix}`;
+}
+
 export const DashboardPage: React.FC = () => {
   const t = useT();
+  const [guideOpen, setGuideOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [recentAudit, setRecentAudit] = useState<AuditLogItem[]>([]);
@@ -90,16 +105,16 @@ export const DashboardPage: React.FC = () => {
       setLastUpdatedAt(Date.now());
       setError(
         detailRefreshFailed
-          ? "Some device detail snapshots could not be refreshed. Existing dashboard data is kept where available."
+          ? t("dashboard.detailRefreshPartial")
           : null,
       );
     } catch (err) {
-      setError(normalizeError(err, "Cannot load dashboard"));
+      setError(normalizeError(err, t("dashboard.loadFailed")));
     } finally {
       setInitialLoading(false);
       setBackgroundRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   React.useEffect(() => {
     void load("initial");
@@ -148,16 +163,35 @@ export const DashboardPage: React.FC = () => {
     [recentDetails],
   );
 
+  const guideItemKeys = [
+    "dashboard.guide.metrics",
+    "dashboard.guide.fleet",
+    "dashboard.guide.devices",
+    "dashboard.guide.activity",
+    "dashboard.guide.compliance",
+    "dashboard.guide.delivery",
+    "dashboard.guide.noData",
+  ];
+
   return (
     <div className="page-stack operations-dashboard">
       <div className="operations-hero">
-        <div>
+        <div className="operations-hero-copy">
           <Typography.Title level={3} style={{ marginTop: 0, marginBottom: 6 }}>
             {t("dashboard.title")}
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             {t("dashboard.subtitle")}
           </Typography.Paragraph>
+          <Button
+            className="dashboard-guide-toggle"
+            type="default"
+            size="small"
+            aria-expanded={guideOpen}
+            onClick={() => setGuideOpen((value) => !value)}
+          >
+            {guideOpen ? t("dashboard.guide.hide") : t("dashboard.guide.show")}
+          </Button>
         </div>
 
         <Space direction="vertical" size={2} align="end">
@@ -166,6 +200,21 @@ export const DashboardPage: React.FC = () => {
             {t("common.lastUpdated")}: {fmtEpoch(lastUpdatedAt)}
           </Typography.Text>
         </Space>
+
+        {guideOpen ? (
+          <div className="dashboard-quick-guide">
+            <Typography.Title level={5} className="dashboard-quick-guide-title">
+              {t("dashboard.guide.title")}
+            </Typography.Title>
+            <ul className="dashboard-quick-guide-list">
+              {guideItemKeys.map((key) => (
+                <li key={key}>
+                  <Typography.Text>{t(key)}</Typography.Text>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       {error ? (
@@ -173,7 +222,7 @@ export const DashboardPage: React.FC = () => {
           type="warning"
           showIcon
           message={error}
-          description="Previous dashboard data is kept on screen while the next refresh retries."
+          description={t("dashboard.refreshRetryDescription")}
         />
       ) : null}
 
@@ -252,15 +301,15 @@ export const DashboardPage: React.FC = () => {
                 }}
               />
               <Table.Column<DeviceResponse>
-                title="Liveness"
+                title={t("dashboard.liveness")}
                 render={(_, record) => <LiveStatusBadge lastSeenAtEpochMillis={record.lastSeenAtEpochMillis} />}
               />
               <Table.Column<DeviceResponse>
-                title="Last seen"
+                title={t("dashboard.lastSeen")}
                 render={(_, record) => (
                   <Space direction="vertical" size={0}>
                     <Typography.Text>{fmtEpoch(record.lastSeenAtEpochMillis)}</Typography.Text>
-                    <Typography.Text type="secondary">{fmtRelativeFromNow(record.lastSeenAtEpochMillis)}</Typography.Text>
+                    <Typography.Text type="secondary">{fmtRelativeForDashboard(record.lastSeenAtEpochMillis, t)}</Typography.Text>
                   </Space>
                 )}
               />
@@ -299,7 +348,7 @@ export const DashboardPage: React.FC = () => {
         <Col xs={24} xl={12}>
           <Card title={t("dashboard.complianceOverview")} className="ops-card">
             {recentDetails.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No device detail snapshots" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("dashboard.noDeviceSnapshots")} />
             ) : (
               <div className="scroll-panel">
                 {recentDetails.map((item) => {
@@ -314,12 +363,15 @@ export const DashboardPage: React.FC = () => {
                           </Tag>
                         </Space>
                         <Typography.Text type="secondary">
-                          desired {shortHash(item.desiredConfigHash)} / applied {shortHash(item.appliedConfigHash)}
+                          {t("dashboard.desired")} {shortHash(item.desiredConfigHash)} / {t("dashboard.applied")}{" "}
+                          {shortHash(item.appliedConfigHash)}
                         </Typography.Text>
                       </Space>
 
                       <Space wrap>
-                        <Tag color={inSync ? "green" : "orange"}>{inSync ? "desired=applied" : "desired!=applied"}</Tag>
+                        <Tag color={inSync ? "green" : "orange"}>
+                          {inSync ? t("dashboard.desiredAppliedMatch") : t("dashboard.desiredAppliedMismatch")}
+                        </Tag>
                         <Tag color={policyStatusColor(item.policyApplyStatus)}>{String(item.policyApplyStatus).toUpperCase()}</Tag>
                       </Space>
                     </div>
@@ -333,7 +385,7 @@ export const DashboardPage: React.FC = () => {
         <Col xs={24} xl={12}>
           <Card title={t("dashboard.deliveryHealth")} className="ops-card">
             {deliveryRows.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No wake-up/poll data yet" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("dashboard.noDeliveryData")} />
             ) : (
               <div className="scroll-panel">
                 {deliveryRows.map((item) => (
@@ -341,13 +393,20 @@ export const DashboardPage: React.FC = () => {
                     <Space direction="vertical" size={2}>
                       <Typography.Text strong>{item.deviceCode}</Typography.Text>
                       <Typography.Text type="secondary">
-                        poll {fmtRelativeFromNow(item.lastPollAtEpochMillis)} / ack {fmtRelativeFromNow(item.lastCommandAckAtEpochMillis)}
+                        {t("dashboard.poll")} {fmtRelativeForDashboard(item.lastPollAtEpochMillis, t)} / {t("dashboard.ack")}{" "}
+                        {fmtRelativeForDashboard(item.lastCommandAckAtEpochMillis, t)}
                       </Typography.Text>
                     </Space>
 
                     <Space wrap>
-                      <Tag color={item.hasFcmToken ? "blue" : "default"}>FCM={String(item.hasFcmToken)}</Tag>
-                      {item.lastWakeupResult ? <Tag color={wakeupResultColor(item.lastWakeupResult)}>{item.lastWakeupResult}</Tag> : <Tag>no wake-up</Tag>}
+                      <Tag color={item.hasFcmToken ? "blue" : "default"}>
+                        {t("dashboard.fcmToken")}={String(item.hasFcmToken)}
+                      </Tag>
+                      {item.lastWakeupResult ? (
+                        <Tag color={wakeupResultColor(item.lastWakeupResult)}>{item.lastWakeupResult}</Tag>
+                      ) : (
+                        <Tag>{t("dashboard.noWakeup")}</Tag>
+                      )}
                     </Space>
                   </div>
                 ))}

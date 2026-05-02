@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 
 const ONLINE_WINDOW_MILLIS = 5 * 60 * 1000;
+const LOST_CONTACT_WINDOW_MILLIS = 7 * 24 * 60 * 60 * 1000;
 
 export function fmtEpoch(value?: number | null) {
   if (!value || Number.isNaN(value)) return "-";
@@ -47,9 +48,16 @@ export function fmtBytes(value?: number | null) {
   return `${current.toFixed(current >= 10 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export function onlineStateFromLastSeen(lastSeenAtEpochMillis?: number | null): "online" | "offline" | "unknown" {
+export function onlineStateFromLastSeen(lastSeenAtEpochMillis?: number | null): "online" | "offline" | "lost_contact" | "unknown" {
   if (!lastSeenAtEpochMillis || Number.isNaN(lastSeenAtEpochMillis)) return "unknown";
-  return Date.now() - lastSeenAtEpochMillis <= ONLINE_WINDOW_MILLIS ? "online" : "offline";
+  const age = Date.now() - lastSeenAtEpochMillis;
+  if (age <= ONLINE_WINDOW_MILLIS) return "online";
+  if (age > LOST_CONTACT_WINDOW_MILLIS) return "lost_contact";
+  return "offline";
+}
+
+export function isLostContactFromLastSeen(lastSeenAtEpochMillis?: number | null): boolean {
+  return onlineStateFromLastSeen(lastSeenAtEpochMillis) === "lost_contact";
 }
 
 export function policyStatusColor(status?: string | null) {
