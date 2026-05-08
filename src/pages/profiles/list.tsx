@@ -51,9 +51,9 @@ export const ProfileListPage: React.FC = () => {
   }, [keyword, profiles]);
 
   return (
-    <div className="page-stack">
-      <div className="toolbar-row">
-        <div>
+    <div className="page-stack profile-list-page">
+      <div className="profile-list-header">
+        <div className="profile-list-header-copy">
           <Typography.Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
             {t("profiles.title")}
           </Typography.Title>
@@ -62,12 +62,12 @@ export const ProfileListPage: React.FC = () => {
           </Typography.Paragraph>
         </div>
 
-        <Space>
+        <Space className="profile-list-actions" wrap>
           <Input
+            className="profile-list-search"
             placeholder={t("profiles.searchPlaceholder")}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: 260 }}
           />
           <Button type="primary" onClick={() => navigate("/profiles/create")}>
             {t("profiles.create")}
@@ -77,51 +77,81 @@ export const ProfileListPage: React.FC = () => {
 
       {error ? <Alert type="error" message={error} /> : null}
 
-      <Card>
+      <Card className="profile-list-card">
         <Table<ProfileResponse>
+          className="profile-list-table"
           dataSource={filtered}
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10 }}
+          tableLayout="fixed"
+          scroll={{ x: 1040 }}
         >
           <Table.Column<ProfileResponse>
             title={t("profiles.profileColumn")}
+            width={330}
             render={(_, record) => (
-              <Space direction="vertical" size={0}>
-                <Typography.Text code>{record.userCode}</Typography.Text>
-                <Typography.Text>{record.name}</Typography.Text>
-              </Space>
+              <div className="profile-list-profile-cell">
+                <Tag className="profile-list-code-tag">{record.userCode}</Tag>
+                <Typography.Text strong className="profile-list-name">
+                  {record.name}
+                </Typography.Text>
+                {record.description ? (
+                  <Typography.Paragraph
+                    className="profile-list-description"
+                    type="secondary"
+                    ellipsis={{ rows: 1, tooltip: record.description }}
+                  >
+                    {record.description}
+                  </Typography.Paragraph>
+                ) : null}
+              </div>
             )}
           />
           <Table.Column<ProfileResponse>
-            title="Allowed Apps"
-            render={(_, record) => <Tag>{record.allowedApps.length}</Tag>}
+            title={t("profiles.allowedAppsColumn")}
+            width={150}
+            render={(_, record) => (
+              <Tag className="profile-list-count-tag" color={record.allowedApps.length > 0 ? "blue" : "default"}>
+                {record.allowedApps.length}
+              </Tag>
+            )}
           />
           <Table.Column<ProfileResponse>
-            title="Kiosk"
-            render={(_, record) => <Tag color={record.kioskMode ? "green" : "default"}>{record.kioskMode ? "ON" : "OFF"}</Tag>}
+            title={t("profiles.kioskColumn")}
+            width={120}
+            render={(_, record) => (
+              <Tag color={record.kioskMode ? "green" : "default"}>{record.kioskMode ? t("profiles.on") : t("profiles.off")}</Tag>
+            )}
           />
           <Table.Column<ProfileResponse>
-            title="StatusBar"
-            render={(_, record) => <Tag color={record.disableStatusBar ? "red" : "green"}>{record.disableStatusBar ? "DISABLED" : "ENABLED"}</Tag>}
+            title={t("profiles.statusBarColumn")}
+            width={140}
+            render={(_, record) => (
+              <Tag color={record.disableStatusBar ? "orange" : "green"}>
+                {record.disableStatusBar ? t("profiles.disabled") : t("profiles.enabled")}
+              </Tag>
+            )}
           />
           <Table.Column<ProfileResponse>
-            title="Updated"
+            title={t("profiles.updatedColumn")}
+            width={170}
             render={(_, record) => fmtEpoch(record.updatedAtEpochMillis)}
           />
           <Table.Column<ProfileResponse>
-            title="Actions"
+            title={t("profiles.actionsColumn")}
+            width={230}
             render={(_, record) => (
-              <Space>
+              <Space className="profile-actions" size={8} wrap>
                 <Link to={`/profiles/show/${record.id}`}>
-                  <Button size="small">Open</Button>
+                  <Button size="small">{t("profiles.openAction")}</Button>
                 </Link>
                 <Link to={`/profiles/edit/${record.id}`}>
-                  <Button size="small">Edit</Button>
+                  <Button size="small">{t("profiles.editAction")}</Button>
                 </Link>
                 <Popconfirm title={t("profiles.deleteConfirm")} onConfirm={() => void deleteProfile(record.id)}>
                   <Button size="small" danger>
-                    Delete
+                    {t("profiles.deleteAction")}
                   </Button>
                 </Popconfirm>
               </Space>

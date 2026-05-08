@@ -4,14 +4,17 @@ import { http } from "./axios";
 import { clearSession, loadSession, saveSession } from "./storage";
 
 export const authProvider: AuthProvider = {
-  login: async ({ username, password }) => {
+  login: async ({ username, password, errorName, loginFailedMessage, forbiddenMessage, noTokenMessage }) => {
     try {
       const { data } = await http.post<LoginResponse>("/api/auth/login", { username, password });
 
       if (!data?.token) {
         return {
           success: false,
-          error: { name: "LoginError", message: "No token returned by backend" },
+          error: {
+            name: String(errorName ?? "Login error"),
+            message: String(noTokenMessage ?? loginFailedMessage ?? "Login failed"),
+          },
         };
       }
 
@@ -26,19 +29,22 @@ export const authProvider: AuthProvider = {
         clearSession();
         return {
           success: false,
-          error: { name: "Forbidden", message: "Tài khoản không có quyền ADMIN." },
+          error: {
+            name: String(errorName ?? "Login error"),
+            message: String(forbiddenMessage ?? loginFailedMessage ?? "Login failed"),
+          },
         };
       }
 
       return { success: true, redirectTo: "/" };
     } catch (error: any) {
       const apiError = error?.response?.data as ApiError | undefined;
-      const message = apiError?.error ?? apiError?.message ?? error?.message ?? "Login failed";
+      const message = loginFailedMessage ?? apiError?.error ?? apiError?.message ?? error?.message ?? "Login failed";
       const suffix = apiError?.code ? ` [${apiError.code}]` : "";
 
       return {
         success: false,
-        error: { name: "LoginError", message: `${message}${suffix}` },
+        error: { name: String(errorName ?? "Login error"), message: `${message}${suffix}` },
       };
     }
   },

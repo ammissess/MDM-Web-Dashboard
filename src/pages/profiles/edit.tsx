@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Alert, Button, Card, Checkbox, Form, Input, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Checkbox, Form, Input, Space, Tag, Typography, message } from "antd";
 import type { DeviceResponse, ProfileResponse, ProfileUpdateRequest } from "../../types/api";
 import { http } from "../../providers/axios";
 import { fmtEpoch, normalizeError } from "../../utils/format";
@@ -17,13 +17,74 @@ function normalizeAllowedApps(items: string[]): string[] {
   ).sort();
 }
 
-const hardeningItems: Array<{ field: keyof ProfileUpdateRequest; label: string }> = [
-  { field: "lockPrivateDnsConfig", label: "Lock Private DNS settings" },
-  { field: "lockVpnConfig", label: "Lock VPN settings" },
-  { field: "blockDebuggingFeatures", label: "Block debugging features / ADB" },
-  { field: "disableUsbDataSignaling", label: "Disable USB data signaling when supported" },
-  { field: "disallowSafeBoot", label: "Disallow safe boot" },
-  { field: "disallowFactoryReset", label: "Disallow factory reset from UI" },
+type PolicyField = keyof Pick<
+  ProfileUpdateRequest,
+  | "kioskMode"
+  | "disableStatusBar"
+  | "blockUninstall"
+  | "disableWifi"
+  | "disableBluetooth"
+  | "disableCamera"
+  | "lockPrivateDnsConfig"
+  | "lockVpnConfig"
+  | "blockDebuggingFeatures"
+  | "disableUsbDataSignaling"
+  | "disallowSafeBoot"
+  | "disallowFactoryReset"
+>;
+
+const corePolicyItems: Array<{ field: PolicyField; labelKey: string; descriptionKey: string }> = [
+  { field: "kioskMode", labelKey: "profiles.policy.kioskMode", descriptionKey: "profiles.policyDesc.kioskMode" },
+  {
+    field: "disableStatusBar",
+    labelKey: "profiles.policy.disableStatusBar",
+    descriptionKey: "profiles.policyDesc.disableStatusBar",
+  },
+  {
+    field: "blockUninstall",
+    labelKey: "profiles.policy.blockUninstall",
+    descriptionKey: "profiles.policyDesc.blockUninstall",
+  },
+  { field: "disableWifi", labelKey: "profiles.policy.disableWifi", descriptionKey: "profiles.policyDesc.disableWifi" },
+  {
+    field: "disableBluetooth",
+    labelKey: "profiles.policy.disableBluetooth",
+    descriptionKey: "profiles.policyDesc.disableBluetooth",
+  },
+  {
+    field: "disableCamera",
+    labelKey: "profiles.policy.disableCamera",
+    descriptionKey: "profiles.policyDesc.disableCamera",
+  },
+];
+
+const hardeningItems: Array<{ field: PolicyField; labelKey: string; descriptionKey: string }> = [
+  {
+    field: "lockPrivateDnsConfig",
+    labelKey: "profiles.policy.lockPrivateDnsConfig",
+    descriptionKey: "profiles.policyDesc.lockPrivateDnsConfig",
+  },
+  { field: "lockVpnConfig", labelKey: "profiles.policy.lockVpnConfig", descriptionKey: "profiles.policyDesc.lockVpnConfig" },
+  {
+    field: "blockDebuggingFeatures",
+    labelKey: "profiles.policy.blockDebuggingFeatures",
+    descriptionKey: "profiles.policyDesc.blockDebuggingFeatures",
+  },
+  {
+    field: "disableUsbDataSignaling",
+    labelKey: "profiles.policy.disableUsbDataSignaling",
+    descriptionKey: "profiles.policyDesc.disableUsbDataSignaling",
+  },
+  {
+    field: "disallowSafeBoot",
+    labelKey: "profiles.policy.disallowSafeBoot",
+    descriptionKey: "profiles.policyDesc.disallowSafeBoot",
+  },
+  {
+    field: "disallowFactoryReset",
+    labelKey: "profiles.policy.disallowFactoryReset",
+    descriptionKey: "profiles.policyDesc.disallowFactoryReset",
+  },
 ];
 
 export const ProfileEditPage: React.FC = () => {
@@ -39,6 +100,14 @@ export const ProfileEditPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [record, setRecord] = useState<ProfileResponse | null>(null);
   const [inventorySources, setInventorySources] = useState<DeviceResponse[]>([]);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const guideItems = [
+    "profiles.editGuide.updateProfile",
+    "profiles.editGuide.importInventory",
+    "profiles.editGuide.backendReadback",
+    "profiles.editGuide.androidProof",
+    "profiles.editGuide.refreshSync",
+  ];
 
   const load = useCallback(async () => {
     try {
@@ -66,11 +135,11 @@ export const ProfileEditPage: React.FC = () => {
 
       setError(null);
     } catch (err) {
-      setError(normalizeError(err, "Cannot load profile"));
+      setError(normalizeError(err, t("profiles.loadOneFailed")));
     } finally {
       setLoading(false);
     }
-  }, [form, id]);
+  }, [form, id, t]);
 
   useEffect(() => {
     void load();
@@ -86,85 +155,100 @@ export const ProfileEditPage: React.FC = () => {
       const values = await form.validateFields();
       const normalizedApps = normalizeAllowedApps(allowedApps);
 
-    const body: ProfileUpdateRequest = {
-      name: values.name,
-      description: values.description,
-      disableWifi: values.disableWifi,
-      disableBluetooth: values.disableBluetooth,
-      disableCamera: values.disableCamera,
-      disableStatusBar: values.disableStatusBar,
-      kioskMode: values.kioskMode,
-      blockUninstall: values.blockUninstall,
-      lockPrivateDnsConfig: values.lockPrivateDnsConfig,
-      lockVpnConfig: values.lockVpnConfig,
-      blockDebuggingFeatures: values.blockDebuggingFeatures,
-      disableUsbDataSignaling: values.disableUsbDataSignaling,
-      disallowSafeBoot: values.disallowSafeBoot,
-      disallowFactoryReset: values.disallowFactoryReset,
-    };
+      const body: ProfileUpdateRequest = {
+        name: values.name,
+        description: values.description,
+        disableWifi: values.disableWifi,
+        disableBluetooth: values.disableBluetooth,
+        disableCamera: values.disableCamera,
+        disableStatusBar: values.disableStatusBar,
+        kioskMode: values.kioskMode,
+        blockUninstall: values.blockUninstall,
+        lockPrivateDnsConfig: values.lockPrivateDnsConfig,
+        lockVpnConfig: values.lockVpnConfig,
+        blockDebuggingFeatures: values.blockDebuggingFeatures,
+        disableUsbDataSignaling: values.disableUsbDataSignaling,
+        disallowSafeBoot: values.disallowSafeBoot,
+        disallowFactoryReset: values.disallowFactoryReset,
+      };
 
       await http.put(`/api/admin/profiles/${id}`, body);
       await http.put(`/api/admin/profiles/${id}/allowed-apps`, normalizedApps);
 
       const { data: readback } = await http.get<ProfileResponse>(`/api/admin/profiles/${id}`);
       const mismatches: string[] = [];
+      const fieldLabels: Record<string, string> = {
+        name: t("profiles.nameLabel"),
+        description: t("profiles.descriptionLabel"),
+        disableWifi: t("profiles.policy.disableWifi"),
+        disableBluetooth: t("profiles.policy.disableBluetooth"),
+        disableCamera: t("profiles.policy.disableCamera"),
+        disableStatusBar: t("profiles.policy.disableStatusBar"),
+        kioskMode: t("profiles.policy.kioskMode"),
+        blockUninstall: t("profiles.policy.blockUninstall"),
+        lockPrivateDnsConfig: t("profiles.policy.lockPrivateDnsConfig"),
+        lockVpnConfig: t("profiles.policy.lockVpnConfig"),
+        blockDebuggingFeatures: t("profiles.policy.blockDebuggingFeatures"),
+        disableUsbDataSignaling: t("profiles.policy.disableUsbDataSignaling"),
+        disallowSafeBoot: t("profiles.policy.disallowSafeBoot"),
+        disallowFactoryReset: t("profiles.policy.disallowFactoryReset"),
+        allowedApps: t("profiles.allowedAppsTitle"),
+      };
+      const formatMismatchValue = (value: unknown) =>
+        typeof value === "boolean" ? (value ? t("profiles.on") : t("profiles.off")) : String(value);
+      const mismatch = (field: string, expected: unknown, actual: unknown) =>
+        `${fieldLabels[field] ?? field} ${t("profiles.expected")}=${formatMismatchValue(expected)} ${t("profiles.actual")}=${formatMismatchValue(actual)}`;
 
-      if (readback.name !== body.name) mismatches.push(`name expected=${body.name} actual=${readback.name}`);
+      if (readback.name !== body.name) mismatches.push(mismatch("name", body.name, readback.name));
       if (readback.description !== body.description) {
-        mismatches.push(`description expected=${body.description} actual=${readback.description}`);
+        mismatches.push(mismatch("description", body.description, readback.description));
       }
       if (readback.disableWifi !== body.disableWifi) {
-        mismatches.push(`disableWifi expected=${String(body.disableWifi)} actual=${String(readback.disableWifi)}`);
+        mismatches.push(mismatch("disableWifi", body.disableWifi, readback.disableWifi));
       }
       if (readback.disableBluetooth !== body.disableBluetooth) {
-        mismatches.push(
-          `disableBluetooth expected=${String(body.disableBluetooth)} actual=${String(readback.disableBluetooth)}`,
-        );
+        mismatches.push(mismatch("disableBluetooth", body.disableBluetooth, readback.disableBluetooth));
       }
       if (readback.disableCamera !== body.disableCamera) {
-        mismatches.push(`disableCamera expected=${String(body.disableCamera)} actual=${String(readback.disableCamera)}`);
+        mismatches.push(mismatch("disableCamera", body.disableCamera, readback.disableCamera));
       }
       if (readback.disableStatusBar !== body.disableStatusBar) {
-        mismatches.push(
-          `disableStatusBar expected=${String(body.disableStatusBar)} actual=${String(readback.disableStatusBar)}`,
-        );
+        mismatches.push(mismatch("disableStatusBar", body.disableStatusBar, readback.disableStatusBar));
       }
       if (readback.kioskMode !== body.kioskMode) {
-        mismatches.push(`kioskMode expected=${String(body.kioskMode)} actual=${String(readback.kioskMode)}`);
+        mismatches.push(mismatch("kioskMode", body.kioskMode, readback.kioskMode));
       }
       if (readback.blockUninstall !== body.blockUninstall) {
-        mismatches.push(`blockUninstall expected=${String(body.blockUninstall)} actual=${String(readback.blockUninstall)}`);
+        mismatches.push(mismatch("blockUninstall", body.blockUninstall, readback.blockUninstall));
       }
       if (readback.lockPrivateDnsConfig !== body.lockPrivateDnsConfig) {
-        mismatches.push(
-          `lockPrivateDnsConfig expected=${String(body.lockPrivateDnsConfig)} actual=${String(readback.lockPrivateDnsConfig)}`,
-        );
+        mismatches.push(mismatch("lockPrivateDnsConfig", body.lockPrivateDnsConfig, readback.lockPrivateDnsConfig));
       }
       if (readback.lockVpnConfig !== body.lockVpnConfig) {
-        mismatches.push(`lockVpnConfig expected=${String(body.lockVpnConfig)} actual=${String(readback.lockVpnConfig)}`);
+        mismatches.push(mismatch("lockVpnConfig", body.lockVpnConfig, readback.lockVpnConfig));
       }
       if (readback.blockDebuggingFeatures !== body.blockDebuggingFeatures) {
         mismatches.push(
-          `blockDebuggingFeatures expected=${String(body.blockDebuggingFeatures)} actual=${String(readback.blockDebuggingFeatures)}`,
+          mismatch("blockDebuggingFeatures", body.blockDebuggingFeatures, readback.blockDebuggingFeatures),
         );
       }
       if (readback.disableUsbDataSignaling !== body.disableUsbDataSignaling) {
         mismatches.push(
-          `disableUsbDataSignaling expected=${String(body.disableUsbDataSignaling)} actual=${String(readback.disableUsbDataSignaling)}`,
+          mismatch("disableUsbDataSignaling", body.disableUsbDataSignaling, readback.disableUsbDataSignaling),
         );
       }
       if (readback.disallowSafeBoot !== body.disallowSafeBoot) {
-        mismatches.push(`disallowSafeBoot expected=${String(body.disallowSafeBoot)} actual=${String(readback.disallowSafeBoot)}`);
+        mismatches.push(mismatch("disallowSafeBoot", body.disallowSafeBoot, readback.disallowSafeBoot));
       }
       if (readback.disallowFactoryReset !== body.disallowFactoryReset) {
         mismatches.push(
-          `disallowFactoryReset expected=${String(body.disallowFactoryReset)} actual=${String(readback.disallowFactoryReset)}`,
+          mismatch("disallowFactoryReset", body.disallowFactoryReset, readback.disallowFactoryReset),
         );
       }
 
       const readbackApps = normalizeAllowedApps(readback.allowedApps ?? []);
       if (readbackApps.join("\n") !== normalizedApps.join("\n")) {
-        mismatches.push(`allowedApps expected=${normalizedApps.join(",")} actual=${readbackApps.join(",")}`);
+        mismatches.push(mismatch("allowedApps", normalizedApps.join(","), readbackApps.join(",")));
       }
 
       setRecord(readback);
@@ -172,13 +256,13 @@ export const ProfileEditPage: React.FC = () => {
       form.setFieldsValue(readback);
 
       if (mismatches.length > 0) {
-        const mismatchMessage = `Saved but readback mismatch: ${mismatches.join(" | ")}`;
+        const mismatchMessage = `${t("profiles.savedReadbackMismatch")}: ${mismatches.join(" | ")}`;
         setError(mismatchMessage);
         message.error(mismatchMessage);
         return;
       }
 
-      message.success("Profile changes saved and readback verified.");
+      message.success(t("profiles.savedVerified"));
     } catch (err) {
       if (
         typeof err === "object" &&
@@ -186,19 +270,30 @@ export const ProfileEditPage: React.FC = () => {
         "errorFields" in err &&
         Array.isArray((err as { errorFields?: unknown[] }).errorFields)
       ) {
-        message.error("Please fix validation errors before saving.");
+        message.error(t("profiles.validationFailed"));
       } else {
-        message.error(normalizeError(err, "Save all profile changes failed"));
+        message.error(normalizeError(err, t("profiles.saveFailed")));
       }
     } finally {
       setSaving(false);
     }
   }
 
+  const renderPolicyOption = (item: { field: PolicyField; labelKey: string; descriptionKey: string }) => (
+    <Form.Item key={item.field} name={item.field} valuePropName="checked" className="profile-policy-form-item">
+      <Checkbox className="profile-policy-option">
+        <span className="profile-policy-option-copy">
+          <Typography.Text strong>{t(item.labelKey)}</Typography.Text>
+          <Typography.Text type="secondary">{t(item.descriptionKey)}</Typography.Text>
+        </span>
+      </Checkbox>
+    </Form.Item>
+  );
+
   if (loading) {
     return (
       <Card>
-        <Alert type="info" message="Loading profile..." />
+        <Alert type="info" message={t("profiles.loadingProfile")} />
       </Card>
     );
   }
@@ -206,105 +301,141 @@ export const ProfileEditPage: React.FC = () => {
   if (!record) {
     return (
       <Card>
-        <Alert type="error" message={error ?? "Profile not found"} />
+        <Alert type="error" message={error ?? t("profiles.profileNotFound")} />
       </Card>
     );
   }
 
   return (
-    <Card
-      title="Edit Profile"
-      extra={
-        <Space>
-          <Typography.Text type="secondary">Updated: {fmtEpoch(record.updatedAtEpochMillis)}</Typography.Text>
-          <Button onClick={() => navigate(`/profiles/show/${id}`)}>Open detail</Button>
+    <div className="page-stack profile-form-page">
+      <Card className="profile-form-hero">
+        <div className="profile-form-hero-copy">
+          <Typography.Title level={3}>{t("profiles.editTitle")}</Typography.Title>
+          <Typography.Paragraph type="secondary">{t("profiles.formSubtitle")}</Typography.Paragraph>
+        </div>
+        <Space className="profile-form-hero-meta" wrap>
+          <Tag>
+            {t("profiles.updatedColumn")}: {fmtEpoch(record.updatedAtEpochMillis)}
+          </Tag>
+          <Button onClick={() => setGuideOpen((value) => !value)}>
+            {guideOpen ? t("common.hideGuide") : t("common.quickGuide")}
+          </Button>
+          <Button onClick={() => navigate(`/profiles/show/${id}`)}>{t("profiles.openDetail")}</Button>
         </Space>
-      }
-    >
+      </Card>
+
+      {guideOpen ? (
+        <div className="profile-quick-guide">
+          <Typography.Title level={5}>{t("profiles.quickGuideTitle")}</Typography.Title>
+          <ol className="profile-quick-guide-content">
+            {guideItems.map((key) => (
+              <li key={key}>
+                <Typography.Text>{t(key)}</Typography.Text>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
       {error ? <Alert type="error" message={error} style={{ marginBottom: 16 }} /> : null}
 
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message={t("device.backendOwned")}
-        description="After Save all profile changes, this page verifies backend readback first. Android application is proven only when the device later polls/acks and reports policy-state."
-      />
+      <Alert type="info" showIcon message={t("profiles.formManagementExplanation")} />
 
-      <Form form={form} layout="vertical">
-        <Form.Item name="userCode" label="User Code">
-          <Input disabled />
-        </Form.Item>
+      <Form form={form} layout="vertical" className="profile-form">
+        <section className="profile-form-section">
+          <div className="profile-section-header">
+            <div>
+              <Typography.Title level={4}>{t("profiles.profileInfoSection")}</Typography.Title>
+              <Typography.Paragraph type="secondary" className="profile-helper-text">
+                {t("profiles.profileInfoHelp")}
+              </Typography.Paragraph>
+            </div>
+          </div>
+          <div className="profile-form-grid">
+            <Form.Item name="userCode" label={t("profiles.userCode")}>
+              <Input disabled className="profile-readonly-input" />
+            </Form.Item>
 
-        <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-          <Input />
-        </Form.Item>
+            <Form.Item name="name" label={t("profiles.nameLabel")} rules={[{ required: true }]}>
+              <Input placeholder={t("profiles.profileNamePlaceholder")} />
+            </Form.Item>
 
-        <Form.Item name="description" label="Description">
-          <Input.TextArea rows={3} />
-        </Form.Item>
+            <Form.Item name="description" label={t("profiles.descriptionLabel")} className="profile-form-full">
+              <Input.TextArea rows={3} placeholder={t("profiles.descriptionPlaceholder")} />
+            </Form.Item>
+          </div>
+        </section>
 
-        <Typography.Title level={5}>Allowed Apps</Typography.Title>
-        <AllowedAppsEditor
-          value={allowedApps}
-          onChange={setAllowedApps}
-          inventorySources={inventorySources}
-          linkedUserCode={record.userCode}
-        />
-        {hasUnsavedAllowedApps ? (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginTop: 12, marginBottom: 24 }}
-            message="Allowed apps changed but not saved yet. Click Save all profile changes to persist them."
+        <section className="profile-form-section">
+          <div className="profile-section-header">
+            <div>
+              <Typography.Title level={4}>{t("profiles.allowedAppsTitle")}</Typography.Title>
+              <Typography.Paragraph type="secondary" className="profile-helper-text">
+                {t("profiles.allowedAppsSectionHelp")}
+              </Typography.Paragraph>
+            </div>
+            <Tag color={allowedApps.length > 0 ? "blue" : "default"}>
+              {allowedApps.length} {t("profiles.appsCountLabel")}
+            </Tag>
+          </div>
+          <AllowedAppsEditor
+            value={allowedApps}
+            onChange={setAllowedApps}
+            inventorySources={inventorySources}
+            linkedUserCode={record.userCode}
           />
-        ) : (
-          <div style={{ marginBottom: 24 }} />
-        )}
+          {hasUnsavedAllowedApps ? (
+            <Alert
+              type="warning"
+              showIcon
+              className="profile-warning-note"
+              message={t("profiles.allowedAppsUnsaved")}
+            />
+          ) : null}
+        </section>
 
-        <Typography.Title level={5}>Policy flags</Typography.Title>
+        <section className="profile-form-section">
+          <div className="profile-section-header">
+            <div>
+              <Typography.Title level={4}>{t("profiles.corePolicies")}</Typography.Title>
+              <Typography.Paragraph type="secondary" className="profile-helper-text">
+                {t("profiles.corePoliciesHelp")}
+              </Typography.Paragraph>
+            </div>
+          </div>
+          <div className="profile-policy-grid profile-policy-option-grid">{corePolicyItems.map(renderPolicyOption)}</div>
+        </section>
 
-        <Form.Item name="kioskMode" valuePropName="checked">
-          <Checkbox>Kiosk mode</Checkbox>
-        </Form.Item>
-        <Form.Item name="disableStatusBar" valuePropName="checked">
-          <Checkbox>Disable status bar</Checkbox>
-        </Form.Item>
-        <Form.Item name="blockUninstall" valuePropName="checked">
-          <Checkbox>Block uninstall</Checkbox>
-        </Form.Item>
-        <Form.Item name="disableWifi" valuePropName="checked">
-          <Checkbox>Disable WiFi settings</Checkbox>
-        </Form.Item>
-        <Form.Item name="disableBluetooth" valuePropName="checked">
-          <Checkbox>Disable Bluetooth</Checkbox>
-        </Form.Item>
-        <Form.Item name="disableCamera" valuePropName="checked">
-          <Checkbox>Disable Camera</Checkbox>
-        </Form.Item>
+        <section className="profile-form-section">
+          <div className="profile-section-header">
+            <div>
+              <Typography.Title level={4}>{t("profiles.securityHardening")}</Typography.Title>
+              <Typography.Paragraph type="secondary" className="profile-helper-text">
+                {t("profiles.securityHardeningHelp")}
+              </Typography.Paragraph>
+            </div>
+          </div>
 
-        <Typography.Title level={5}>Security hardening</Typography.Title>
+          <Alert type="warning" showIcon className="profile-warning-note" message={t("profiles.warningAdb")} />
 
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="Do not enable Block debugging / Disable USB data while testing with ADB or emulator. It may disconnect debugging."
-        />
+          <div className="profile-policy-grid profile-policy-option-grid">{hardeningItems.map(renderPolicyOption)}</div>
+        </section>
 
-        {hardeningItems.map((item) => (
-          <Form.Item key={item.field} name={item.field} valuePropName="checked">
-            <Checkbox>{item.label}</Checkbox>
-          </Form.Item>
-        ))}
-
-        <Space>
-          <Button type="primary" onClick={() => void saveAllProfileChanges()} loading={saving}>
-            Save all profile changes
-          </Button>
-          <Button onClick={() => navigate("/profiles")}>Back</Button>
-        </Space>
+        <div className="profile-form-actions">
+          <div>
+            <Typography.Text strong>{t("profiles.saveActions")}</Typography.Text>
+            <Typography.Paragraph type="secondary" className="profile-helper-text">
+              {t("profiles.editActionsHelp")}
+            </Typography.Paragraph>
+          </div>
+          <div className="profile-form-action-buttons">
+            <Button onClick={() => navigate("/profiles")}>{t("profiles.back")}</Button>
+            <Button type="primary" onClick={() => void saveAllProfileChanges()} loading={saving}>
+              {t("profiles.saveAll")}
+            </Button>
+          </div>
+        </div>
       </Form>
-    </Card>
+    </div>
   );
 };

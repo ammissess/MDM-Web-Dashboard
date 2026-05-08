@@ -1,8 +1,8 @@
 import React from "react";
 import { Refine, Authenticated } from "@refinedev/core";
 import { ErrorComponent, RefineThemes, ThemedLayoutV2, ThemedSiderV2 } from "@refinedev/antd";
-import routerBindings, { DocumentTitleHandler, UnsavedChangesNotifier } from "@refinedev/react-router-v6";
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import routerBindings, { UnsavedChangesNotifier } from "@refinedev/react-router-v6";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { ConfigProvider, Segmented, Space, Typography } from "antd";
 
 import { authProvider } from "./providers/authProvider";
@@ -52,6 +52,27 @@ const AppLayout: React.FC = () => (
     <Outlet />
   </ThemedLayoutV2>
 );
+
+const AppDocumentTitle: React.FC = () => {
+  const { t } = useLanguage();
+  const location = useLocation();
+
+  React.useEffect(() => {
+    const pathname = location.pathname;
+    let title = t("document.dashboard");
+
+    if (pathname.startsWith("/login")) title = t("document.login");
+    else if (pathname.startsWith("/devices")) title = t("document.devices");
+    else if (pathname.startsWith("/profiles/create")) title = t("profiles.createTitle");
+    else if (pathname.startsWith("/profiles/edit")) title = t("profiles.editTitle");
+    else if (pathname.startsWith("/profiles")) title = t("document.profiles");
+    else if (pathname.startsWith("/audit")) title = t("document.audit");
+
+    document.title = title;
+  }, [location.pathname, t]);
+
+  return null;
+};
 
 const AppContent: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -131,7 +152,7 @@ const AppContent: React.FC = () => {
       </Routes>
 
       <UnsavedChangesNotifier />
-      <DocumentTitleHandler />
+      <AppDocumentTitle />
     </Refine>
   );
 };

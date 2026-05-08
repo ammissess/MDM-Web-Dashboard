@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Checkbox, Input, Select, Space, Tag, Typography } from "antd";
+import { Alert, Button, Checkbox, Empty, Input, Select, Tag, Typography } from "antd";
 import type { AdminDeviceAppView, AdminDeviceAppsResponse, DeviceResponse } from "../../../types/api";
 import { http } from "../../../providers/axios";
-import { fmtRelativeFromNow, normalizeError } from "../../../utils/format";
+import { fmtEpoch, normalizeError } from "../../../utils/format";
+import { useT } from "../../../i18n";
 
 type Props = {
   value?: string[];
@@ -21,9 +22,9 @@ function normalizePackages(items: string[]) {
   );
 }
 
-function formatSourceLabel(device: DeviceResponse) {
+function formatSourceLabel(device: DeviceResponse, t: (key: string) => string) {
   const parts = [device.deviceCode];
-  if (device.userCode) parts.push(`userCode=${device.userCode}`);
+  if (device.userCode) parts.push(`${t("profiles.userCode")}: ${device.userCode}`);
   if (device.model) parts.push(device.model);
   return parts.join(" - ");
 }
@@ -36,6 +37,7 @@ function formatInventoryOption(item: AdminDeviceAppView) {
 }
 
 export const AllowedAppsEditor: React.FC<Props> = ({ value, onChange, inventorySources, linkedUserCode }) => {
+  const t = useT();
   const [input, setInput] = useState("");
   const [inventoryDeviceId, setInventoryDeviceId] = useState<string>();
   const [inventoryItems, setInventoryItems] = useState<AdminDeviceAppView[]>([]);
@@ -119,7 +121,7 @@ export const AllowedAppsEditor: React.FC<Props> = ({ value, onChange, inventoryS
         if (!active) return;
         setInventoryItems([]);
         setInventorySelection([]);
-        setInventoryError(normalizeError(error, "Cannot load app inventory"));
+        setInventoryError(normalizeError(error, t("profiles.appInventoryLoadFailed")));
       })
       .finally(() => {
         if (active) setInventoryLoading(false);
@@ -128,7 +130,7 @@ export const AllowedAppsEditor: React.FC<Props> = ({ value, onChange, inventoryS
     return () => {
       active = false;
     };
-  }, [inventoryDeviceId]);
+  }, [inventoryDeviceId, t]);
 
   function addOne(raw: string) {
     const pkg = raw.trim();
@@ -148,110 +150,128 @@ export const AllowedAppsEditor: React.FC<Props> = ({ value, onChange, inventoryS
   }
 
   return (
-    <div>
-      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        Each packageName is one app allowed to run in kiosk mode, for example <code>com.android.chrome</code>.
+    <div className="profile-apps-editor">
+      <Typography.Paragraph type="secondary" className="profile-helper-text">
+        {t("profiles.allowedAppsHelp")}
       </Typography.Paragraph>
 
-      {showInventoryPicker ? (
-        <div style={{ marginBottom: 16 }}>
-          <Typography.Text strong>Import packages from device inventory</Typography.Text>
-          <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-            Inventory only comes from <code>GET /api/admin/devices/{`{id}`}/apps</code>. Choose one source device, then
-            add multiple packages into the current allowedApps list.
-          </Typography.Paragraph>
-
-          {sortedSources.length === 0 ? (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message="No device is available for inventory import yet. Manual package entry still works."
-            />
-          ) : (
-            <Space direction="vertical" size={12} style={{ width: "100%" }}>
-              <Select
-                value={inventoryDeviceId}
-                onChange={setInventoryDeviceId}
-                style={{ width: "100%" }}
-                options={sortedSources.map((device) => ({
-                  label: formatSourceLabel(device),
-                  value: device.id,
-                }))}
-                placeholder="Choose a device inventory source"
-              />
-
-              <Space wrap>
-                <Checkbox checked={launchableOnly} onChange={(event) => setLaunchableOnly(event.target.checked)}>
-                  Launchable only
-                </Checkbox>
-                {selectedSource ? (
-                  <Tag color={linkedSources.some((device) => device.id === selectedSource.id) ? "blue" : "default"}>
-                    source={selectedSource.deviceCode}
-                  </Tag>
-                ) : null}
-                {selectedSource?.userCode ? <Tag>userCode={selectedSource.userCode}</Tag> : null}
-                {inventoryItems.length > 0 ? (
-                  <Tag>
-                    {inventoryItems.length} apps / {launchableCount} launchable / seen{" "}
-                    {fmtRelativeFromNow(selectedSource?.lastSeenAtEpochMillis)}
-                  </Tag>
-                ) : null}
-              </Space>
-
-              {inventoryError ? <Alert type="warning" showIcon message={inventoryError} /> : null}
-
-              <Select
-                mode="multiple"
-                value={inventorySelection}
-                onChange={setInventorySelection}
-                style={{ width: "100%" }}
-                placeholder={inventoryLoading ? "Loading inventory..." : "Search appName or packageName from inventory"}
-                options={inventoryOptions}
-                loading={inventoryLoading}
-                maxTagCount="responsive"
-                showSearch
-                optionFilterProp="label"
-                filterOption={(input, option) =>
-                  `${String(option?.label ?? "")} ${String((option as { searchLabel?: string } | undefined)?.searchLabel ?? "")}`
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                notFoundContent={
-                  inventoryLoading
-                    ? "Loading inventory..."
-                    : launchableOnly
-                      ? "No matching launchable apps"
-                      : "No matching apps"
-                }
-              />
-
-              <Button onClick={addSelectedInventory} disabled={inventorySelection.length === 0}>
-                Add selected packages
-              </Button>
-            </Space>
-          )}
-        </div>
-      ) : null}
-
-      <Space.Compact style={{ width: "100%" }}>
+      <div className="profile-apps-manual-row">
         <Input
-          placeholder="com.example.app"
+          placeholder={t("profiles.packageNamePlaceholder")}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onPressEnter={() => addOne(input)}
         />
-        <Button onClick={() => addOne(input)}>Add</Button>
-      </Space.Compact>
-
-      <div className="allowed-app-scroll" style={{ marginTop: 12 }}>
-        {apps.length === 0 ? <Tag>empty</Tag> : null}
-        {apps.map((pkg) => (
-          <Tag key={pkg} closable onClose={() => remove(pkg)}>
-            {pkg}
-          </Tag>
-        ))}
+        <Button onClick={() => addOne(input)}>{t("profiles.addPackage")}</Button>
       </div>
+
+      <div className="profile-app-tags profile-apps-current">
+        {apps.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("profiles.noAllowedApps")} />
+        ) : (
+          apps.map((pkg) => (
+            <Tag key={pkg} closable onClose={() => remove(pkg)}>
+              {pkg}
+            </Tag>
+          ))
+        )}
+      </div>
+
+      {showInventoryPicker ? (
+        <div className="profile-inventory-card">
+          <div className="profile-inventory-header">
+            <div>
+              <Typography.Text strong>{t("profiles.importFromInventory")}</Typography.Text>
+              <Typography.Paragraph type="secondary" className="profile-helper-text">
+                {t("profiles.inventoryHelp")}
+              </Typography.Paragraph>
+            </div>
+            <Typography.Text type="secondary" className="profile-inventory-api-note">
+              <code>GET /api/admin/devices/{`{id}`}/apps</code>
+            </Typography.Text>
+          </div>
+
+          {sortedSources.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("profiles.noInventorySources")} />
+          ) : (
+            <div className="profile-inventory-body">
+              <Select
+                value={inventoryDeviceId}
+                onChange={setInventoryDeviceId}
+                className="profile-inventory-select"
+                options={sortedSources.map((device) => ({
+                  label: formatSourceLabel(device, t),
+                  value: device.id,
+                }))}
+                placeholder={t("profiles.chooseInventorySource")}
+              />
+
+              <div className="profile-inventory-meta">
+                <Checkbox checked={launchableOnly} onChange={(event) => setLaunchableOnly(event.target.checked)}>
+                  {t("profiles.launchableOnly")}
+                </Checkbox>
+                {selectedSource ? (
+                  <Tag
+                    className="profile-inventory-tag"
+                    color={linkedSources.some((device) => device.id === selectedSource.id) ? "blue" : "default"}
+                  >
+                    {t("profiles.sourceLabel")}: {selectedSource.deviceCode}
+                  </Tag>
+                ) : null}
+                {selectedSource?.userCode ? (
+                  <Tag className="profile-inventory-tag">
+                    {t("profiles.userCode")}: {selectedSource.userCode}
+                  </Tag>
+                ) : null}
+                {inventoryItems.length > 0 ? (
+                  <Tag className="profile-inventory-tag">
+                    {inventoryItems.length} {t("profiles.appsLabel")} / {launchableCount}{" "}
+                    {t("profiles.launchableLabel")} / {t("profiles.seenLabel")}{" "}
+                    {fmtEpoch(selectedSource?.lastSeenAtEpochMillis)}
+                  </Tag>
+                ) : null}
+              </div>
+
+              {inventoryError ? <Alert type="warning" showIcon message={inventoryError} /> : null}
+
+              <div className="profile-inventory-import-row">
+                <Select
+                  mode="multiple"
+                  value={inventorySelection}
+                  onChange={setInventorySelection}
+                  className="profile-inventory-package-select"
+                  placeholder={inventoryLoading ? t("profiles.loadingInventory") : t("profiles.searchInventoryPlaceholder")}
+                  options={inventoryOptions}
+                  loading={inventoryLoading}
+                  maxTagCount="responsive"
+                  showSearch
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    `${String(option?.label ?? "")} ${String((option as { searchLabel?: string } | undefined)?.searchLabel ?? "")}`
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                  notFoundContent={
+                    inventoryLoading
+                      ? t("profiles.loadingInventory")
+                      : launchableOnly
+                        ? t("profiles.noMatchingLaunchableApps")
+                        : t("profiles.noMatchingApps")
+                  }
+                />
+
+                <Button onClick={addSelectedInventory} disabled={inventorySelection.length === 0}>
+                  {t("profiles.addSelectedPackages")}
+                </Button>
+              </div>
+
+              {!inventoryLoading && selectedSource && inventoryItems.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("profiles.noInventoryData")} />
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 };
